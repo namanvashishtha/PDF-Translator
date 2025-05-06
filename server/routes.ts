@@ -165,7 +165,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
       // Process the translation asynchronously
-      processTranslation(document.id, data.targetLanguage, data.outputFormat)
+      // Check if PDF contains images and adjust process accordingly
+      const preserveImages = data.preserveImages === true; // Default to false if not specified
+      
+      processTranslation(document.id, data.targetLanguage, data.outputFormat, preserveImages)
         .catch(error => {
           console.error("Translation processing error:", error);
           storage.updateDocument(document.id, { status: "error" });
@@ -248,7 +251,8 @@ const extractionCache = new Map<string, string>();
 async function processTranslation(
   documentId: number, 
   targetLanguage: string, 
-  outputFormat: string
+  outputFormat: string,
+  preserveImages: boolean = false
 ): Promise<void> {
   console.log(`Starting translation process for document ${documentId} to ${targetLanguage} in ${outputFormat} format`);
   

@@ -19,6 +19,7 @@ import io
 import re
 import argparse
 import tempfile
+import fitz  # PyMuPDF - for preserving images in PDFs
 
 # Configure pytesseract path (adjust if needed)
 # pytesseract.pytesseract.tesseract_cmd = '/usr/bin/tesseract'

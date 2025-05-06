@@ -57,6 +57,7 @@ export const translationRequestSchema = z.object({
   documentId: z.number(),
   targetLanguage: z.string(),
   outputFormat: z.enum(["pdf", "txt", "dual"]),
+  preserveImages: z.boolean().optional().default(true) // Default to preserving images
 });
 
 export type TranslationRequest = z.infer<typeof translationRequestSchema>;

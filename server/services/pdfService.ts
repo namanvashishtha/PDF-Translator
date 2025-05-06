@@ -181,12 +181,37 @@ export class PDFService {
         console.log(`Using Spanish (es) as fallback source language instead of ${sourceLanguage}`);
       }
       
-      // Special case for Spanish to English - use the aggressive translator
+      // Special case for Spanish to English - use the extreme translator
       // This is our most common translation case and needs special handling
       const isSpanishToEnglish = (actualSourceLang === "es" && targetLanguage === "en");
       if (isSpanishToEnglish) {
-        console.log('SPECIAL CASE: Spanish to English detected - using aggressive translation method');
+        console.log('CRITICAL CASE: Spanish to English detected - using extreme translation method');
         
+        // EXTREME METHOD - completely rebuilds the PDF with optimal readability
+        const extremeScript = path.join(process.cwd(), 'scripts', 'extreme_translate.py');
+        const extremeCommand = `${PYTHON_PATH} "${extremeScript}" "${inputPdfPath}" "${outputPdfPath}" "${actualSourceLang}" "${targetLanguage}"`;
+        console.log(`Executing extreme Spanish-English translator: ${extremeCommand}`);
+        
+        try {
+          const startTime = Date.now();
+          await execAsync(extremeCommand);
+          const duration = Date.now() - startTime;
+          console.log(`Extreme Spanish-English translation completed in ${duration}ms`);
+          
+          // Check if output file exists and has content
+          if (fs.existsSync(outputPdfPath) && fs.statSync(outputPdfPath).size > 0) {
+            console.log(`Successfully translated PDF with extreme method`);
+            return outputPdfPath;
+          }
+          
+          // If extreme method failed, try aggressive method
+          console.log('Extreme translation failed or output file is empty, trying aggressive method');
+        } catch (extremeError) {
+          console.error('Extreme translation failed, trying aggressive method:', extremeError);
+        }
+        
+        // Try aggressive method next for Spanish to English
+        console.log('Trying aggressive translation method');
         const aggressiveScript = path.join(process.cwd(), 'scripts', 'aggressive_translate.py');
         const aggressiveCommand = `${PYTHON_PATH} "${aggressiveScript}" "${inputPdfPath}" "${outputPdfPath}" "${actualSourceLang}" "${targetLanguage}"`;
         console.log(`Executing aggressive Spanish-English translator: ${aggressiveCommand}`);

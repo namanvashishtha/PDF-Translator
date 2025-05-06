@@ -165,7 +165,32 @@ export class PDFService {
       
       const outputPdfPath = this.tempFileManager.createTempFile('translated-with-images', '.pdf');
       
-      // Use Python script to translate PDF while preserving images
+      // IMPORTANT FIX: Try the aggressive force translation method first
+      const forceTranslateScript = path.join(process.cwd(), 'scripts', 'force_translate_pdf.py');
+      
+      console.log('Using aggressive force translation method');
+      const forceCommand = `${PYTHON_PATH} "${forceTranslateScript}" "${inputPdfPath}" "${outputPdfPath}" "${sourceLanguage}" "${targetLanguage}"`;
+      console.log(`Executing force translate: ${forceCommand}`);
+      
+      try {
+        const startTime = Date.now();
+        await execAsync(forceCommand);
+        const duration = Date.now() - startTime;
+        console.log(`Force PDF translation completed in ${duration}ms`);
+        
+        // Check if output file exists and has content
+        if (fs.existsSync(outputPdfPath) && fs.statSync(outputPdfPath).size > 0) {
+          console.log(`Successfully translated PDF with force method`);
+          return outputPdfPath;
+        } else {
+          console.log('Force translation failed or output file is empty, falling back to original method');
+        }
+      } catch (forceError) {
+        console.error('Force translation failed, falling back to original method:', forceError);
+      }
+      
+      // Fallback to original method if force translation fails
+      console.log('Falling back to original translation method');
       const command = `${PYTHON_PATH} "${this.pythonScriptPath}" translate_pdf "${inputPdfPath}" "${outputPdfPath}" "${sourceLanguage}" "${targetLanguage}"`;
       console.log(`Executing: ${command}`);
       

@@ -3,6 +3,7 @@ import { ArrowLeft } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useQuery } from "@tanstack/react-query";
 import { Language } from "@shared/schema";
 import { getLanguageFlag, getLanguageName } from "@/lib/languages";
@@ -14,6 +15,8 @@ interface LanguageSelectorProps {
   setTargetLanguage: (language: string) => void;
   outputFormat: "pdf" | "txt" | "dual";
   setOutputFormat: (format: "pdf" | "txt" | "dual") => void;
+  preserveImages: boolean;
+  setPreserveImages: (preserve: boolean) => void;
   onBack: () => void;
   onTranslate: () => void;
 }
@@ -25,6 +28,8 @@ export function LanguageSelector({
   setTargetLanguage,
   outputFormat,
   setOutputFormat,
+  preserveImages,
+  setPreserveImages,
   onBack,
   onTranslate,
 }: LanguageSelectorProps) {
@@ -106,6 +111,28 @@ export function LanguageSelector({
             </div>
           </RadioGroup>
         </div>
+        
+        {/* Preserve Images Option (only show for PDF output) */}
+        {outputFormat === "pdf" && (
+          <div>
+            <div className="flex items-center space-x-2">
+              <Checkbox 
+                id="preserve-images" 
+                checked={preserveImages}
+                onCheckedChange={(checked) => setPreserveImages(checked as boolean)}
+              />
+              <Label 
+                htmlFor="preserve-images" 
+                className="text-sm font-medium text-gray-700"
+              >
+                Preserve images and layout
+              </Label>
+            </div>
+            <p className="mt-1 text-xs text-gray-500 ml-6">
+              When enabled, we'll maintain the original document's images and attempt to preserve the layout.
+            </p>
+          </div>
+        )}
       </div>
 
       <div className="mt-8 flex justify-between">

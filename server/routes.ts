@@ -165,8 +165,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
       // Process the translation asynchronously
-      // Check if PDF contains images and adjust process accordingly
-      const preserveImages = data.preserveImages === true; // Default to false if not specified
+      // Extract the preserve images flag from the request (defaults to true in schema)
+      const preserveImages = data.preserveImages ?? true;
       
       processTranslation(document.id, data.targetLanguage, data.outputFormat, preserveImages)
         .catch(error => {

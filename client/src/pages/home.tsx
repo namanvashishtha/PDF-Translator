@@ -34,6 +34,7 @@ export default function Home() {
   const [selectedOutputFormat, setSelectedOutputFormat] = useState<"pdf" | "txt" | "dual">("pdf");
   const [detectedLanguage, setDetectedLanguage] = useState<string>("en");
   const [targetLanguage, setTargetLanguage] = useState<string>("es");
+  const [preserveImages, setPreserveImages] = useState<boolean>(true);
   
   // Translation mutation
   const translateMutation = useMutation({
@@ -46,7 +47,8 @@ export default function Home() {
       return pdfService.translateDocument(
         currentDocumentId,
         targetLanguage,
-        selectedOutputFormat
+        selectedOutputFormat,
+        preserveImages
       );
     },
     onSuccess: (data) => {
@@ -259,6 +261,8 @@ export default function Home() {
                 setTargetLanguage={setTargetLanguage}
                 outputFormat={selectedOutputFormat}
                 setOutputFormat={setSelectedOutputFormat}
+                preserveImages={preserveImages}
+                setPreserveImages={setPreserveImages}
                 onBack={handleGoBackToUpload}
                 onTranslate={handleStartTranslation}
               />

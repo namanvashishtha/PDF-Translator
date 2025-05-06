@@ -27,11 +27,12 @@ export const pdfService = {
   /**
    * Start translation process for a document
    */
-  async translateDocument(documentId: number, targetLanguage: string, outputFormat: string) {
+  async translateDocument(documentId: number, targetLanguage: string, outputFormat: string, preserveImages: boolean = true) {
     const response = await apiRequest("POST", "/api/translate", {
       documentId,
       targetLanguage,
       outputFormat,
+      preserveImages,
     });
     
     return response.json();

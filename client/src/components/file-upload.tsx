@@ -12,6 +12,7 @@ interface FileUploadProps {
   onFileSelect: (file: File) => void;
   onRemoveFile: () => void;
   onContinue: () => void;
+  onDocumentUploaded?: (documentId: number) => void; // Add prop for document ID
 }
 
 export function FileUpload({
@@ -21,6 +22,7 @@ export function FileUpload({
   onFileSelect,
   onRemoveFile,
   onContinue,
+  onDocumentUploaded,
 }: FileUploadProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
@@ -29,6 +31,8 @@ export function FileUpload({
     mutationFn: async (file: File) => {
       const formData = new FormData();
       formData.append("file", file);
+      console.log("Uploading file:", file.name);
+      
       const response = await fetch("/api/upload", {
         method: "POST",
         body: formData,
@@ -42,6 +46,13 @@ export function FileUpload({
       return response.json();
     },
     onSuccess: (data) => {
+      console.log("Upload successful:", data);
+      
+      // Set the document ID in the parent component
+      if (data.document && data.document.id && onDocumentUploaded) {
+        onDocumentUploaded(data.document.id);
+      }
+      
       toast({
         title: "File uploaded successfully",
         description: "Your PDF has been uploaded and is ready for translation.",
@@ -49,6 +60,7 @@ export function FileUpload({
       onContinue();
     },
     onError: (error) => {
+      console.error("Upload error:", error);
       toast({
         title: "Upload failed",
         description: error instanceof Error ? error.message : "Failed to upload PDF file",

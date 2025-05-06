@@ -8,8 +8,9 @@ import { DownloadOptions } from "@/components/download-options";
 import { SupportedLanguages } from "@/components/supported-languages";
 import { useToast } from "@/hooks/use-toast";
 import { Languages } from "lucide-react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { Document } from "@shared/schema";
+import { pdfService } from "@/lib/pdf-service";
 
 export default function Home() {
   const { toast } = useToast();
@@ -34,6 +35,38 @@ export default function Home() {
   const [detectedLanguage, setDetectedLanguage] = useState<string>("en");
   const [targetLanguage, setTargetLanguage] = useState<string>("es");
   
+  // Translation mutation
+  const translateMutation = useMutation({
+    mutationFn: async () => {
+      if (!currentDocumentId) {
+        throw new Error("No document selected for translation");
+      }
+      
+      console.log(`Starting translation for document ${currentDocumentId} to ${targetLanguage} in ${selectedOutputFormat} format`);
+      return pdfService.translateDocument(
+        currentDocumentId,
+        targetLanguage,
+        selectedOutputFormat
+      );
+    },
+    onSuccess: (data) => {
+      console.log("Translation process initiated:", data);
+      toast({
+        title: "Translation Started",
+        description: "Your document is being processed. This will only take a few seconds.",
+      });
+    },
+    onError: (error) => {
+      console.error("Translation error:", error);
+      setIsProcessing(false);
+      toast({
+        title: "Translation Failed",
+        description: error instanceof Error ? error.message : "Failed to start translation process",
+        variant: "destructive",
+      });
+    }
+  });
+  
   // Fetch document details if we have a document ID
   const { data: documentData } = useQuery<Document>({
     queryKey: [currentDocumentId ? `/api/documents/${currentDocumentId}` : null],
@@ -43,6 +76,10 @@ export default function Home() {
   
   // Update UI based on document status
   if (documentData && isProcessing) {
+    if (documentData.originalLanguage && detectedLanguage !== documentData.originalLanguage) {
+      setDetectedLanguage(documentData.originalLanguage);
+    }
+    
     if (documentData.status === "language_detected" && processingStep < 2) {
       setProcessingStep(2);
     } else if (documentData.status === "translating" && processingStep < 2) {
@@ -53,6 +90,10 @@ export default function Home() {
       setIsProcessing(false);
       setTranslationComplete(true);
       setCurrentStep(3);
+      toast({
+        title: "Translation Complete",
+        description: "Your document has been translated successfully!",
+      });
     } else if (documentData.status === "error") {
       setIsProcessing(false);
       toast({
@@ -92,9 +133,21 @@ export default function Home() {
     setCurrentStep(1);
   };
   
-  const handleStartTranslation = () => {
+  const handleStartTranslation = async () => {
+    if (!currentDocumentId) {
+      toast({
+        title: "Error",
+        description: "Please upload a document first",
+        variant: "destructive",
+      });
+      return;
+    }
+    
     setIsProcessing(true);
     setProcessingStep(1);
+    
+    // Start the translation process
+    translateMutation.mutate();
   };
   
   const handleTranslateNewDocument = () => {

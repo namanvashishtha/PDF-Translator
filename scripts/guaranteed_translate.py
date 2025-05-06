@@ -12,16 +12,25 @@ import tempfile
 import uuid
 
 def translate_text_directly(text, source_lang, target_lang):
-    """Translate text directly, ignoring auto-detection"""
+    """Translate text directly, ignoring auto-detection with extra reliability"""
     
     # Safety check
     if not text or text.isspace():
         return text
         
-    # Quick test if text might already be in target language
-    # This is a very rough check but helps avoid unnecessary translations
+    # Skip very short strings (likely not meaningful text)
+    if len(text) < 2:
+        return text
+        
+    # Don't translate if same language
     if source_lang == target_lang:
         return text
+    
+    # For Spanish to English, which is most important case, 
+    # we will be super aggressive about making sure it works
+    IS_SPANISH_TO_ENGLISH = (source_lang.lower() == "es" and target_lang.lower() == "en")
+    if IS_SPANISH_TO_ENGLISH:
+        print(f"CRITICAL TRANSLATION: Spanish to English for text: '{text[:50]}...'")
     
     # Special case: Almost always use Spanish as source if translating to English
     # This is a workaround for the common case where Spanish documents are being detected wrong
@@ -30,36 +39,51 @@ def translate_text_directly(text, source_lang, target_lang):
         actual_source = "es"
         print(f"OVERRIDE: Using Spanish (es) instead of {source_lang} when translating to English")
         
-    try:
-        # Create translator with source and target languages
-        translator = GoogleTranslator(source=actual_source, target=target_lang)
-        
-        # Translate text
-        translated = translator.translate(text)
-        
-        # Print debugging info for certain cases
-        if len(text) > 10 and text.lower() == translated.lower():
-            print(f"WARNING: Text appears unchanged after translation: '{text[:30]}'")
+    # Translation function with retries
+    def attempt_translation(src_lang, tgt_lang, retry_count=0):
+        try:
+            # Create translator with source and target languages
+            translator = GoogleTranslator(source=src_lang, target=tgt_lang)
             
-            # If translation failed (output same as input), try Spanish as source 
-            # This is only needed if we didn't already try Spanish
-            if actual_source != "es":
-                print("RETRY: Attempting translation with Spanish (es) as source")
-                try:
-                    retry_translator = GoogleTranslator(source="es", target=target_lang)
-                    retry_translated = retry_translator.translate(text)
-                    
-                    if retry_translated != text:
-                        print("RETRY SUCCESSFUL: Translation worked with Spanish source")
-                        return retry_translated
-                except Exception as retry_error:
-                    print(f"Retry translation error: {retry_error}")
+            # Translate text with specific timeout
+            translated = translator.translate(text)
+            return translated
+        except Exception as e:
+            print(f"Translation error (attempt {retry_count}): {e}")
+            if retry_count < 3:  # Maximum 3 retries
+                print(f"Retrying translation (attempt {retry_count + 1})...")
+                return attempt_translation(src_lang, tgt_lang, retry_count + 1)
+            return None  # Give up after 3 attempts
+    
+    # First try with default language setting
+    translated = attempt_translation(actual_source, target_lang)
+    
+    # Print debugging info for certain cases
+    if translated and len(text) > 10 and text.lower() == translated.lower():
+        print(f"WARNING: Text appears unchanged after translation: '{text[:30]}'")
+        
+        # Try again with explicit Spanish source if we didn't already
+        if actual_source != "es" and target_lang == "en":
+            print("FALLBACK: Attempting translation with Spanish (es) as explicit source")
+            spanish_translated = attempt_translation("es", target_lang)
             
-        return translated
-    except Exception as e:
-        print(f"Translation error: {e}")
-        # Return original text on error
+            if spanish_translated and spanish_translated != text:
+                print("FALLBACK SUCCESSFUL: Translation worked with Spanish source")
+                return spanish_translated
+            
+        # Try English as fallback target language
+        if target_lang != "en":
+            print("EMERGENCY FALLBACK: Attempting translation to English instead")
+            english_translated = attempt_translation(actual_source, "en")
+            if english_translated and english_translated != text:
+                return english_translated
+    
+    # If all strategies failed, fallback to original text
+    if not translated or translated.isspace():
+        print(f"CRITICAL ERROR: All translation attempts failed for: '{text[:30]}'")
         return text
+            
+    return translated
 
 def guaranteed_translate_pdf(input_path, output_path, source_lang, target_lang):
     """
@@ -198,41 +222,61 @@ def guaranteed_translate_pdf(input_path, output_path, source_lang, target_lang):
                                     span["bbox"][3] + 2   # y1
                                 )
                                 
-                                # Special handling for Spanish to English translations (most important case)
+                                # Use a much more aggressive text replacement approach
+                                # Create a more noticeable text box with solid white background
+                                larger_rect = fitz.Rect(
+                                    span["bbox"][0] - 3,    # x0 (expand leftward)
+                                    span["bbox"][1] - 3,    # y0 (expand upward)
+                                    span["bbox"][2] + 30,   # x1 (ensure plenty of space for translated text)
+                                    span["bbox"][3] + 3     # y1 (expand downward)
+                                )
+                                
+                                # ALWAYS use the aggressive approach for all translations
+                                # First make the original text area completely white (solid background)
+                                new_page.draw_rect(larger_rect, color=(1, 1, 1), fill=(1, 1, 1))
+                                
+                                # Apply a very thin black border to make the text area stand out
+                                new_page.draw_rect(larger_rect, color=(0, 0, 0), width=0.1)
+                                
+                                # Insert text with much higher contrast and larger font
+                                # Place text in the center of the white rectangle
+                                text_x = origin[0]
+                                text_y = origin[1]
+                                
+                                # Apply an even more aggressive approach for Spanish to English
                                 if IS_SPANISH_TO_ENGLISH:
-                                    # Add a more opaque background for Spanish->English translations
-                                    # Draw a solid white background first 
-                                    new_page.draw_rect(rect, color=(1, 1, 1), fill=(1, 1, 1))
+                                    # Double the font size for Spanish to English
+                                    render_size = max(font_size * 1.5, 10)
                                     
-                                    # Then add the black text on top with a slightly larger font
+                                    # Insert bold-style text (multiple overlapping renders)
+                                    # This creates a more visible effect that stands out clearly
                                     new_page.insert_text(
-                                        (origin[0], origin[1]), 
+                                        (text_x, text_y), 
                                         translated, 
-                                        fontsize=font_size * 1.1,  # Make text slightly larger
+                                        fontsize=render_size,
                                         fontname=font_name,
                                         color=(0, 0, 0)  # Pure black for maximum contrast
                                     )
-                                    
-                                    # Add a second copy of the text slightly offset for emphasis
-                                    # This creates a pseudo-bold effect
-                                    if len(translated) > 3:  # Only for non-trivial text
+                                    # Create fake bold effect with multiple slight offsets
+                                    offsets = [0.2, 0.4, 0.6]
+                                    for offset in offsets:
                                         new_page.insert_text(
-                                            (origin[0] + 0.3, origin[1]), 
+                                            (text_x + offset, text_y), 
                                             translated, 
-                                            fontsize=font_size * 1.1,
+                                            fontsize=render_size,
                                             fontname=font_name,
                                             color=(0, 0, 0)
                                         )
                                 else:
-                                    # Standard approach for other language pairs
-                                    # Draw semi-transparent white background for better readability
-                                    new_page.draw_rect(rect, color=(1, 1, 1), fill=(1, 1, 1, 0.7))
+                                    # Standard approach for other language pairs, but still with 
+                                    # better visibility than before
+                                    render_size = max(font_size * 1.2, 9)
                                     
-                                    # Insert translated text with high contrast black color
+                                    # Insert text with good visibility
                                     new_page.insert_text(
-                                        (origin[0], origin[1]), 
+                                        (text_x, text_y), 
                                         translated, 
-                                        fontsize=font_size * 1.0,  # Use original size for better visibility
+                                        fontsize=render_size,
                                         fontname=font_name,
                                         color=(0, 0, 0)  # Force black color for best contrast
                                     )

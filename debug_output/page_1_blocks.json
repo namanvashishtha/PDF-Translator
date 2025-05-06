@@ -1,0 +1,200 @@
+[
+  {
+    "bbox": [
+      201.7449951171875,
+      132.45677185058594,
+      393.5343322753906,
+      153.11927795410156
+    ],
+    "text": "DocumentoenEspa\u00f1ol",
+    "font": "LMRoman17-Regular",
+    "size": 20.662500381469727
+  },
+  {
+    "bbox": [
+      262.71697998046875,
+      184.6129913330078,
+      332.5686340332031,
+      198.9591827392578
+    ],
+    "text": "TuNombre",
+    "font": "LMRoman12-Regular",
+    "size": 14.346199989318848
+  },
+  {
+    "bbox": [
+      264.4729919433594,
+      220.22698974609375,
+      330.82415771484375,
+      234.57318115234375
+    ],
+    "text": "Mayo2025",
+    "font": "LMRoman12-Regular",
+    "size": 14.346199989318848
+  },
+  {
+    "bbox": [
+      71.99998474121094,
+      282.099609375,
+      87.08067321777344,
+      299.31500244140625
+    ],
+    "text": "1.",
+    "font": "LMRoman12-Bold",
+    "size": 17.21540069580078
+  },
+  {
+    "bbox": [
+      106.4307861328125,
+      282.099609375,
+      214.13034057617188,
+      299.31500244140625
+    ],
+    "text": "Introducci\u00f3n",
+    "font": "LMRoman12-Bold",
+    "size": 17.21540069580078
+  },
+  {
+    "bbox": [
+      89.9329833984375,
+      321.9576416015625,
+      523.3089599609375,
+      333.912841796875
+    ],
+    "text": "Loremipsumdolorsitamet,consectetueradipiscingelit.Utpuruselit,vestibulumut,",
+    "font": "LMRoman12-Regular",
+    "size": 11.9552001953125
+  },
+  {
+    "bbox": [
+      71.99998474121094,
+      345.8656311035156,
+      523.3446655273438,
+      357.8208312988281
+    ],
+    "text": "placeratac,adipiscingvitae,felis.Curabiturdictumgravidamauris.Namarculibero,",
+    "font": "LMRoman12-Regular",
+    "size": 11.9552001953125
+  },
+  {
+    "bbox": [
+      71.99998474121094,
+      369.77362060546875,
+      523.32080078125,
+      381.72882080078125
+    ],
+    "text": "nonummyeget,consectetuerid,vulputatea,magna.Donecvehiculaaugueeuneque.",
+    "font": "LMRoman12-Regular",
+    "size": 11.9552001953125
+  },
+  {
+    "bbox": [
+      71.99998474121094,
+      393.6816101074219,
+      523.296875,
+      405.6368103027344
+    ],
+    "text": "Pellentesquehabitantmorbitristiquesenectusetnetusetmalesuadafamesacturpis",
+    "font": "LMRoman12-Regular",
+    "size": 11.9552001953125
+  },
+  {
+    "bbox": [
+      71.99998474121094,
+      417.589599609375,
+      523.30859375,
+      429.5447998046875
+    ],
+    "text": "egestas.Maurisutleo.Crasviverrametusrhoncussem.Nullaetlectusvestibulumurna",
+    "font": "LMRoman12-Regular",
+    "size": 11.9552001953125
+  },
+  {
+    "bbox": [
+      71.99998474121094,
+      441.4966125488281,
+      523.3328247070312,
+      453.4518127441406
+    ],
+    "text": "fringillaultrices.Phaselluseutellussitamettortorgravidaplacerat.Integersapienest,",
+    "font": "LMRoman12-Regular",
+    "size": 11.9552001953125
+  },
+  {
+    "bbox": [
+      71.99998474121094,
+      465.40460205078125,
+      523.2847900390625,
+      477.35980224609375
+    ],
+    "text": "iaculisin,pretiumquis,viverraac,nunc.Praesentegetsemvelleoultricesbibendum.",
+    "font": "LMRoman12-Regular",
+    "size": 11.9552001953125
+  },
+  {
+    "bbox": [
+      71.99998474121094,
+      489.3125915527344,
+      523.3446044921875,
+      501.2677917480469
+    ],
+    "text": "Aeneanfaucibus.Morbidolornulla,malesuadaeu,pulvinarat,mollisac,nulla.Curabitur",
+    "font": "LMRoman12-Regular",
+    "size": 11.9552001953125
+  },
+  {
+    "bbox": [
+      71.99998474121094,
+      513.2205810546875,
+      523.3086547851562,
+      525.17578125
+    ],
+    "text": "auctorsempernulla.Donecvariusorciegetrisus.Duisnibhmi,congueeu,accumsan",
+    "font": "LMRoman12-Regular",
+    "size": 11.9552001953125
+  },
+  {
+    "bbox": [
+      71.99998474121094,
+      537.1285400390625,
+      452.7731018066406,
+      549.083740234375
+    ],
+    "text": "eleifend,sagittisquis,diam.Duisegetorcisitametorcidignissimrutrum.",
+    "font": "LMRoman12-Regular",
+    "size": 11.9552001953125
+  },
+  {
+    "bbox": [
+      262.4141845703125,
+      597.3526000976562,
+      332.9281921386719,
+      710.175048828125
+    ],
+    "text": "A",
+    "font": "LMSans17-Regular",
+    "size": 112.82240295410156
+  },
+  {
+    "bbox": [
+      167.65399169921875,
+      745.6575927734375,
+      427.667724609375,
+      757.61279296875
+    ],
+    "text": "Figura1:Imagendeejemploenlaprimerap\u00e1gina.",
+    "font": "LMRoman12-Regular",
+    "size": 11.9552001953125
+  },
+  {
+    "bbox": [
+      294.71099853515625,
+      790.4345703125,
+      300.5690612792969,
+      802.3897705078125
+    ],
+    "text": "1",
+    "font": "LMRoman12-Regular",
+    "size": 11.9552001953125
+  }
+]

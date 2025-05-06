@@ -165,7 +165,33 @@ export class PDFService {
       
       const outputPdfPath = this.tempFileManager.createTempFile('translated-with-images', '.pdf');
       
-      // IMPORTANT FIX: Try the aggressive force translation method first
+      // CRITICAL FIX: Now try all methods one by one until success
+      
+      // METHOD 1: Try the direct translation method (most reliable)
+      const directTranslateScript = path.join(process.cwd(), 'scripts', 'direct_translate.py');
+      
+      console.log('Using new direct translation method');
+      const directCommand = `${PYTHON_PATH} "${directTranslateScript}" "${inputPdfPath}" "${outputPdfPath}" "${sourceLanguage}" "${targetLanguage}"`;
+      console.log(`Executing direct translate: ${directCommand}`);
+      
+      try {
+        const startTime = Date.now();
+        await execAsync(directCommand);
+        const duration = Date.now() - startTime;
+        console.log(`Direct PDF translation completed in ${duration}ms`);
+        
+        // Check if output file exists and has content
+        if (fs.existsSync(outputPdfPath) && fs.statSync(outputPdfPath).size > 0) {
+          console.log(`Successfully translated PDF with direct method`);
+          return outputPdfPath;
+        } else {
+          console.log('Direct translation failed or output file is empty, trying force method');
+        }
+      } catch (directError) {
+        console.error('Direct translation failed, trying force method:', directError);
+      }
+      
+      // METHOD 2: Try the aggressive force translation method
       const forceTranslateScript = path.join(process.cwd(), 'scripts', 'force_translate_pdf.py');
       
       console.log('Using aggressive force translation method');
@@ -189,7 +215,7 @@ export class PDFService {
         console.error('Force translation failed, falling back to original method:', forceError);
       }
       
-      // Fallback to original method if force translation fails
+      // METHOD 3: Fallback to original method if both direct and force translation fail
       console.log('Falling back to original translation method');
       const command = `${PYTHON_PATH} "${this.pythonScriptPath}" translate_pdf "${inputPdfPath}" "${outputPdfPath}" "${sourceLanguage}" "${targetLanguage}"`;
       console.log(`Executing: ${command}`);

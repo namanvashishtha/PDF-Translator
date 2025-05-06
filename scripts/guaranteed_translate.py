@@ -22,10 +22,17 @@ def translate_text_directly(text, source_lang, target_lang):
     # This is a very rough check but helps avoid unnecessary translations
     if source_lang == target_lang:
         return text
+    
+    # Special case: Almost always use Spanish as source if translating to English
+    # This is a workaround for the common case where Spanish documents are being detected wrong
+    actual_source = source_lang
+    if target_lang == "en" and (source_lang == "auto" or source_lang == "en" or source_lang == "ca"):
+        actual_source = "es"
+        print(f"OVERRIDE: Using Spanish (es) instead of {source_lang} when translating to English")
         
     try:
         # Create translator with source and target languages
-        translator = GoogleTranslator(source=source_lang, target=target_lang)
+        translator = GoogleTranslator(source=actual_source, target=target_lang)
         
         # Translate text
         translated = translator.translate(text)
@@ -33,6 +40,20 @@ def translate_text_directly(text, source_lang, target_lang):
         # Print debugging info for certain cases
         if len(text) > 10 and text.lower() == translated.lower():
             print(f"WARNING: Text appears unchanged after translation: '{text[:30]}'")
+            
+            # If translation failed (output same as input), try Spanish as source 
+            # This is only needed if we didn't already try Spanish
+            if actual_source != "es":
+                print("RETRY: Attempting translation with Spanish (es) as source")
+                try:
+                    retry_translator = GoogleTranslator(source="es", target=target_lang)
+                    retry_translated = retry_translator.translate(text)
+                    
+                    if retry_translated != text:
+                        print("RETRY SUCCESSFUL: Translation worked with Spanish source")
+                        return retry_translated
+                except Exception as retry_error:
+                    print(f"Retry translation error: {retry_error}")
             
         return translated
     except Exception as e:

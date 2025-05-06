@@ -97,23 +97,37 @@ def extract_text(pdf_path, output_path):
         return False
 
 def extract_text_with_ocr(pdf_path, output_path):
-    """Extract text from a PDF file using OCR"""
+    """Extract text from a PDF file using OCR with optimizations"""
     try:
+        print(f"Starting OCR text extraction for {pdf_path}")
         text = ""
         
-        # Convert PDF to images
-        images = convert_from_path(pdf_path, dpi=300)
+        # Lower DPI for faster processing while maintaining readability
+        # 200 DPI is a good balance between speed and accuracy
+        images = convert_from_path(pdf_path, dpi=200)
+        
+        total_pages = len(images)
+        print(f"PDF has {total_pages} pages to process")
         
         # Process each page with OCR
         for i, image in enumerate(images):
+            print(f"OCR processing page {i+1}/{total_pages}")
+            
+            # Use optimized OCR settings
+            # -l eng: use English language model (faster)
+            # --oem 1: use LSTM OCR Engine only
+            # --psm 3: auto-detect page segmentation mode
+            config = '--oem 1 --psm 3'
+            
             # Perform OCR
-            page_text = pytesseract.image_to_string(image)
+            page_text = pytesseract.image_to_string(image, config=config)
             text += page_text + "\n\n"
         
         # Write text to output file
         with open(output_path, 'w', encoding='utf-8') as output_file:
             output_file.write(text)
-            
+        
+        print(f"OCR extraction completed, saved to {output_path}")
         return True
     except Exception as e:
         print(f"Error performing OCR: {e}", file=sys.stderr)
@@ -186,39 +200,65 @@ def translate_text(input_path, output_path, source_lang, target_lang):
         with open(input_path, 'r', encoding='utf-8') as file:
             text = file.read()
         
+        print(f"Translating from {source_lang} to {target_lang}")
+        
         # Handle special case when source and target are the same
-        if source_lang == target_lang or source_lang == "auto" and detect_language(input_path) == target_lang:
+        if source_lang == target_lang:
+            print("Source and target languages are the same, skipping translation")
             with open(output_path, 'w', encoding='utf-8') as file:
                 file.write(text)
             return True
         
-        # Use Google Translator
+        # Use Google Translator with optimized settings
         translator = GoogleTranslator(source=source_lang, target=target_lang)
         
         # Split text into chunks to avoid exceeding API limits
-        # This is a simple approach, it could be improved to split by paragraphs
-        MAX_CHUNK_SIZE = 4000  # Google Translate has limits
+        # Using larger chunks for improved efficiency while staying within limits
+        MAX_CHUNK_SIZE = 4900  # Increased but still under Google Translate limits
         
+        # Intelligently split text to preserve context
+        paragraphs = text.split('\n')
         chunks = []
         current_chunk = ""
         
-        # Split by paragraphs
-        paragraphs = text.split('\n')
-        
         for paragraph in paragraphs:
-            if len(current_chunk) + len(paragraph) + 1 <= MAX_CHUNK_SIZE:
-                current_chunk += paragraph + '\n'
+            # Skip empty paragraphs
+            if not paragraph.strip():
+                continue
+                
+            # If adding this paragraph would exceed the limit, start a new chunk
+            if len(current_chunk) + len(paragraph) + 1 > MAX_CHUNK_SIZE:
+                if current_chunk:
+                    chunks.append(current_chunk)
+                
+                # If the paragraph itself is longer than max size, split it further
+                if len(paragraph) > MAX_CHUNK_SIZE:
+                    # Split long paragraph at sentence boundaries
+                    sentences = re.split(r'(?<=[.!?])\s+', paragraph)
+                    current_chunk = ""
+                    
+                    for sentence in sentences:
+                        if len(current_chunk) + len(sentence) + 1 <= MAX_CHUNK_SIZE:
+                            current_chunk += sentence + " "
+                        else:
+                            chunks.append(current_chunk)
+                            current_chunk = sentence + " "
+                else:
+                    current_chunk = paragraph + '\n'
             else:
-                chunks.append(current_chunk)
-                current_chunk = paragraph + '\n'
+                current_chunk += paragraph + '\n'
         
-        if current_chunk:
+        # Add the last chunk if not empty
+        if current_chunk.strip():
             chunks.append(current_chunk)
+        
+        print(f"Split text into {len(chunks)} chunks for translation")
         
         # Translate each chunk
         translated_text = ""
-        for chunk in chunks:
+        for i, chunk in enumerate(chunks):
             if chunk.strip():
+                print(f"Translating chunk {i+1} of {len(chunks)}")
                 translated_chunk = translator.translate(chunk)
                 translated_text += translated_chunk + '\n'
         
@@ -226,6 +266,7 @@ def translate_text(input_path, output_path, source_lang, target_lang):
         with open(output_path, 'w', encoding='utf-8') as file:
             file.write(translated_text)
         
+        print("Translation completed successfully")
         return True
     except Exception as e:
         print(f"Error translating text: {e}", file=sys.stderr)

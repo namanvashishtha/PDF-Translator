@@ -5,12 +5,16 @@ import path from 'path';
 import { TempFileManager } from '../utils/tempFileManager';
 
 const execAsync = util.promisify(exec);
+// Use the system Python path for reliability
+const PYTHON_PATH = 'python';
 
 export class PythonService {
   private tempFileManager: TempFileManager;
+  private pythonScriptPath: string;
 
   constructor() {
     this.tempFileManager = new TempFileManager();
+    this.pythonScriptPath = path.resolve(process.cwd(), 'scripts/pdf_processor.py');
   }
 
   /**
@@ -18,14 +22,16 @@ export class PythonService {
    */
   async detectLanguage(pdfPath: string): Promise<string> {
     try {
+      console.log(`Detecting language for ${pdfPath}...`);
       // Run Python script to detect language
-      const { stdout, stderr } = await execAsync(`python3 scripts/pdf_processor.py detect_language "${pdfPath}"`);
+      const { stdout, stderr } = await execAsync(`${PYTHON_PATH} "${this.pythonScriptPath}" detect_language "${pdfPath}"`);
       
       if (stderr) {
         console.error('Error in language detection:', stderr);
       }
       
       const language = stdout.trim();
+      console.log(`Detected language: ${language || 'en (default)'}`);
       return language || 'en'; // Default to English if detection fails
     } catch (error) {
       console.error('Error detecting language:', error);
@@ -38,10 +44,13 @@ export class PythonService {
    */
   async extractTextWithOcr(pdfPath: string): Promise<string> {
     try {
+      console.log(`Extracting text with OCR from ${pdfPath}...`);
       const outputTextPath = this.tempFileManager.createTempFile('ocr-output', '.txt');
       
-      // Run OCR using Python script
-      await execAsync(`python3 scripts/pdf_processor.py ocr "${pdfPath}" "${outputTextPath}"`);
+      // Run OCR using Python script with optimized parameters
+      const command = `${PYTHON_PATH} "${this.pythonScriptPath}" ocr "${pdfPath}" "${outputTextPath}"`;
+      console.log(`Executing: ${command}`);
+      await execAsync(command);
       
       if (fs.existsSync(outputTextPath)) {
         return fs.readFileSync(outputTextPath, 'utf8');
@@ -55,7 +64,7 @@ export class PythonService {
   }
 
   /**
-   * Translates text from source language to target language
+   * Translates text from source language to target language with optimized chunking
    */
   async translateText(
     text: string, 
@@ -63,6 +72,14 @@ export class PythonService {
     targetLanguage: string
   ): Promise<string> {
     try {
+      console.log(`Translating text from ${sourceLanguage} to ${targetLanguage}...`);
+      
+      // Don't translate if languages are the same
+      if (sourceLanguage === targetLanguage) {
+        console.log('Source and target languages are the same, skipping translation');
+        return text;
+      }
+      
       const inputTextPath = this.tempFileManager.createTempFile('to-translate', '.txt');
       const outputTextPath = this.tempFileManager.createTempFile('translated', '.txt');
       
@@ -70,7 +87,9 @@ export class PythonService {
       fs.writeFileSync(inputTextPath, text);
       
       // Run translation using Python script
-      await execAsync(`python3 scripts/pdf_processor.py translate "${inputTextPath}" "${outputTextPath}" "${sourceLanguage}" "${targetLanguage}"`);
+      const command = `${PYTHON_PATH} "${this.pythonScriptPath}" translate "${inputTextPath}" "${outputTextPath}" "${sourceLanguage}" "${targetLanguage}"`;
+      console.log(`Executing: ${command}`);
+      await execAsync(command);
       
       if (fs.existsSync(outputTextPath)) {
         return fs.readFileSync(outputTextPath, 'utf8');

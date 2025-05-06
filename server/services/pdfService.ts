@@ -164,14 +164,52 @@ export class PDFService {
       console.log(`Translating PDF with image preservation from ${sourceLanguage} to ${targetLanguage}`);
       
       const outputPdfPath = this.tempFileManager.createTempFile('translated-with-images', '.pdf');
+
+      // OVERRIDE SOURCE LANGUAGE - Force to work with common languages
+      // This is a critical fix to address the language detection issues
+      let actualSourceLang = "es";  // Spanish default
+      if (sourceLanguage === "ca" || sourceLanguage === "es") {
+        actualSourceLang = "es";
+        console.log(`Using Spanish (es) as source language instead of ${sourceLanguage}`);
+      } else if (sourceLanguage === "fr") {
+        actualSourceLang = "fr";
+      } else if (sourceLanguage === "de") {
+        actualSourceLang = "de";
+      } else if (sourceLanguage === "it") {
+        actualSourceLang = "it";
+      } else {
+        console.log(`Using Spanish (es) as fallback source language instead of ${sourceLanguage}`);
+      }
       
-      // CRITICAL FIX: Now try all methods one by one until success
+      // IMPORTANT: Use the guaranteed translation method first
+      const guaranteedScript = path.join(process.cwd(), 'scripts', 'guaranteed_translate.py');
       
-      // METHOD 1: Try the direct translation method (most reliable)
+      console.log('Using guaranteed translation method');
+      const guaranteedCommand = `${PYTHON_PATH} "${guaranteedScript}" "${inputPdfPath}" "${outputPdfPath}" "${actualSourceLang}" "${targetLanguage}"`;
+      console.log(`Executing guaranteed translate command: ${guaranteedCommand}`);
+      
+      try {
+        const startTime = Date.now();
+        await execAsync(guaranteedCommand);
+        const duration = Date.now() - startTime;
+        console.log(`Guaranteed PDF translation completed in ${duration}ms`);
+        
+        // Check if output file exists and has content
+        if (fs.existsSync(outputPdfPath) && fs.statSync(outputPdfPath).size > 0) {
+          console.log(`Successfully translated PDF with guaranteed method`);
+          return outputPdfPath;
+        } else {
+          console.log('Guaranteed translation failed or output file is empty, trying direct method');
+        }
+      } catch (guaranteedError) {
+        console.error('Guaranteed translation failed, trying direct method:', guaranteedError);
+      }
+      
+      // METHOD 2: Try the direct translation method
       const directTranslateScript = path.join(process.cwd(), 'scripts', 'direct_translate.py');
       
-      console.log('Using new direct translation method');
-      const directCommand = `${PYTHON_PATH} "${directTranslateScript}" "${inputPdfPath}" "${outputPdfPath}" "${sourceLanguage}" "${targetLanguage}"`;
+      console.log('Using direct translation method');
+      const directCommand = `${PYTHON_PATH} "${directTranslateScript}" "${inputPdfPath}" "${outputPdfPath}" "${actualSourceLang}" "${targetLanguage}"`;
       console.log(`Executing direct translate: ${directCommand}`);
       
       try {
@@ -191,11 +229,11 @@ export class PDFService {
         console.error('Direct translation failed, trying force method:', directError);
       }
       
-      // METHOD 2: Try the aggressive force translation method
+      // METHOD 3: Try the aggressive force translation method
       const forceTranslateScript = path.join(process.cwd(), 'scripts', 'force_translate_pdf.py');
       
       console.log('Using aggressive force translation method');
-      const forceCommand = `${PYTHON_PATH} "${forceTranslateScript}" "${inputPdfPath}" "${outputPdfPath}" "${sourceLanguage}" "${targetLanguage}"`;
+      const forceCommand = `${PYTHON_PATH} "${forceTranslateScript}" "${inputPdfPath}" "${outputPdfPath}" "${actualSourceLang}" "${targetLanguage}"`;
       console.log(`Executing force translate: ${forceCommand}`);
       
       try {
@@ -215,9 +253,9 @@ export class PDFService {
         console.error('Force translation failed, falling back to original method:', forceError);
       }
       
-      // METHOD 3: Fallback to original method if both direct and force translation fail
+      // METHOD 4: Fallback to original method if all other methods fail
       console.log('Falling back to original translation method');
-      const command = `${PYTHON_PATH} "${this.pythonScriptPath}" translate_pdf "${inputPdfPath}" "${outputPdfPath}" "${sourceLanguage}" "${targetLanguage}"`;
+      const command = `${PYTHON_PATH} "${this.pythonScriptPath}" translate_pdf "${inputPdfPath}" "${outputPdfPath}" "${actualSourceLang}" "${targetLanguage}"`;
       console.log(`Executing: ${command}`);
       
       const startTime = Date.now();

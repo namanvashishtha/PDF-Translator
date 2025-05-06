@@ -181,7 +181,36 @@ export class PDFService {
         console.log(`Using Spanish (es) as fallback source language instead of ${sourceLanguage}`);
       }
       
-      // IMPORTANT: Use the guaranteed translation method first
+      // Special case for Spanish to English - use the aggressive translator
+      // This is our most common translation case and needs special handling
+      const isSpanishToEnglish = (actualSourceLang === "es" && targetLanguage === "en");
+      if (isSpanishToEnglish) {
+        console.log('SPECIAL CASE: Spanish to English detected - using aggressive translation method');
+        
+        const aggressiveScript = path.join(process.cwd(), 'scripts', 'aggressive_translate.py');
+        const aggressiveCommand = `${PYTHON_PATH} "${aggressiveScript}" "${inputPdfPath}" "${outputPdfPath}" "${actualSourceLang}" "${targetLanguage}"`;
+        console.log(`Executing aggressive Spanish-English translator: ${aggressiveCommand}`);
+        
+        try {
+          const startTime = Date.now();
+          await execAsync(aggressiveCommand);
+          const duration = Date.now() - startTime;
+          console.log(`Aggressive Spanish-English translation completed in ${duration}ms`);
+          
+          // Check if output file exists and has content
+          if (fs.existsSync(outputPdfPath) && fs.statSync(outputPdfPath).size > 0) {
+            console.log(`Successfully translated PDF with aggressive method`);
+            return outputPdfPath;
+          }
+          
+          // If aggressive method failed, we'll continue with other methods
+          console.log('Aggressive translation failed or output file is empty, trying guaranteed method');
+        } catch (aggressiveError) {
+          console.error('Aggressive translation failed, trying guaranteed method:', aggressiveError);
+        }
+      }
+      
+      // IMPORTANT: Use the guaranteed translation method for all other cases
       const guaranteedScript = path.join(process.cwd(), 'scripts', 'guaranteed_translate.py');
       
       console.log('Using guaranteed translation method');

@@ -79,6 +79,14 @@ def guaranteed_translate_pdf(input_path, output_path, source_lang, target_lang):
         import shutil
         shutil.copy(input_path, output_path)
         return True
+        
+    # Check if this is Spanish to English - the most common translation
+    # For this case, we'll be more aggressive about ensuring translated text is visible
+    IS_SPANISH_TO_ENGLISH = (source_lang.lower() == "es" and target_lang.lower() == "en")
+    if IS_SPANISH_TO_ENGLISH:
+        print("CRITICAL CASE: Spanish to English translation - using high visibility mode")
+    else:
+        print(f"Normal translation mode for {source_lang} to {target_lang}")
 
     # First test if translation works with our language codes
     test_input = "This is a test sentence."
@@ -178,7 +186,11 @@ def guaranteed_translate_pdf(input_path, output_path, source_lang, target_lang):
                                     translated_spans += 1
                                     total_translated_spans += 1
                                 
-                                # Create a white rectangle to cover original text
+                                # CRITICAL FIX: Change text visibility approach
+                                # Instead of trying to cover text with white rectangles
+                                # which might interfere with background images, use a different approach
+                                
+                                # Make text stand out with a semi-transparent background
                                 rect = fitz.Rect(
                                     span["bbox"][0] - 2,  # x0
                                     span["bbox"][1] - 2,  # y0 
@@ -186,17 +198,44 @@ def guaranteed_translate_pdf(input_path, output_path, source_lang, target_lang):
                                     span["bbox"][3] + 2   # y1
                                 )
                                 
-                                # Draw white rectangle to cover original text
-                                new_page.draw_rect(rect, color=(1, 1, 1), fill=(1, 1, 1))
-                                
-                                # Insert translated text
-                                new_page.insert_text(
-                                    (origin[0], origin[1]), 
-                                    translated, 
-                                    fontsize=font_size * 0.9,  # slightly smaller to fit
-                                    fontname=font_name,
-                                    color=color
-                                )
+                                # Special handling for Spanish to English translations (most important case)
+                                if IS_SPANISH_TO_ENGLISH:
+                                    # Add a more opaque background for Spanish->English translations
+                                    # Draw a solid white background first 
+                                    new_page.draw_rect(rect, color=(1, 1, 1), fill=(1, 1, 1))
+                                    
+                                    # Then add the black text on top with a slightly larger font
+                                    new_page.insert_text(
+                                        (origin[0], origin[1]), 
+                                        translated, 
+                                        fontsize=font_size * 1.1,  # Make text slightly larger
+                                        fontname=font_name,
+                                        color=(0, 0, 0)  # Pure black for maximum contrast
+                                    )
+                                    
+                                    # Add a second copy of the text slightly offset for emphasis
+                                    # This creates a pseudo-bold effect
+                                    if len(translated) > 3:  # Only for non-trivial text
+                                        new_page.insert_text(
+                                            (origin[0] + 0.3, origin[1]), 
+                                            translated, 
+                                            fontsize=font_size * 1.1,
+                                            fontname=font_name,
+                                            color=(0, 0, 0)
+                                        )
+                                else:
+                                    # Standard approach for other language pairs
+                                    # Draw semi-transparent white background for better readability
+                                    new_page.draw_rect(rect, color=(1, 1, 1), fill=(1, 1, 1, 0.7))
+                                    
+                                    # Insert translated text with high contrast black color
+                                    new_page.insert_text(
+                                        (origin[0], origin[1]), 
+                                        translated, 
+                                        fontsize=font_size * 1.0,  # Use original size for better visibility
+                                        fontname=font_name,
+                                        color=(0, 0, 0)  # Force black color for best contrast
+                                    )
                                 
                                 # Log sample translations (not every one to reduce noise)
                                 if processed_spans % 10 == 0 and len(text) > 5:

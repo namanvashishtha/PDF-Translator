@@ -5,23 +5,37 @@ import util from 'util';
 import { TempFileManager } from '../utils/tempFileManager';
 
 const execAsync = util.promisify(exec);
+// Use the system Python path for reliability
+const PYTHON_PATH = 'python';
+
+// In-memory cache for OCR check results
+const ocrCheckCache = new Map<string, boolean>();
 
 export class PDFService {
   private tempFileManager: TempFileManager;
+  private pythonScriptPath: string;
 
   constructor() {
     this.tempFileManager = new TempFileManager();
+    this.pythonScriptPath = path.resolve(process.cwd(), 'scripts/pdf_processor.py');
   }
 
   /**
-   * Extracts text from a PDF file using pdftotext (poppler-utils)
+   * Extracts text from a PDF file using the Python script
    */
   async extractText(pdfPath: string): Promise<string> {
     try {
+      console.log(`Extracting text from PDF: ${path.basename(pdfPath)}`);
       const textOutputPath = this.tempFileManager.createTempFile('extracted', '.txt');
       
-      // Use pdf2text from poppler-utils
-      await execAsync(`python3 scripts/pdf_processor.py extract "${pdfPath}" "${textOutputPath}"`);
+      // Use Python script for text extraction with optimized parameters
+      const command = `${PYTHON_PATH} "${this.pythonScriptPath}" extract "${pdfPath}" "${textOutputPath}"`;
+      console.log(`Executing: ${command}`);
+      
+      const startTime = Date.now();
+      await execAsync(command);
+      const duration = Date.now() - startTime;
+      console.log(`Text extraction completed in ${duration}ms`);
       
       if (fs.existsSync(textOutputPath)) {
         const text = fs.readFileSync(textOutputPath, 'utf8');
@@ -37,16 +51,34 @@ export class PDFService {
 
   /**
    * Determines if a PDF needs OCR (has scanned/image content)
+   * Uses caching to avoid repeated processing of the same file
    */
   async needsOcr(pdfPath: string): Promise<boolean> {
     try {
+      // Check cache first
+      if (ocrCheckCache.has(pdfPath)) {
+        const needsOcr = ocrCheckCache.get(pdfPath)!;
+        console.log(`Using cached OCR check result for ${path.basename(pdfPath)}: ${needsOcr}`);
+        return needsOcr;
+      }
+      
+      console.log(`Checking if PDF needs OCR: ${path.basename(pdfPath)}`);
       // Run Python script to check if OCR is needed
-      const { stdout } = await execAsync(`python3 scripts/pdf_processor.py check_ocr "${pdfPath}"`);
-      return stdout.trim() === 'true';
+      const command = `${PYTHON_PATH} "${this.pythonScriptPath}" check_ocr "${pdfPath}"`;
+      
+      const { stdout } = await execAsync(command);
+      const needsOcr = stdout.trim() === 'true';
+      
+      // Cache the result
+      ocrCheckCache.set(pdfPath, needsOcr);
+      
+      console.log(`OCR needed for ${path.basename(pdfPath)}: ${needsOcr}`);
+      return needsOcr;
     } catch (error) {
       console.error('Error checking if PDF needs OCR:', error);
-      // Default to using OCR if we can't determine
-      return true;
+      // Default to false (direct extraction) for better performance
+      // If direct extraction fails, we'll fall back to OCR in the translation process
+      return false;
     }
   }
 
@@ -55,13 +87,20 @@ export class PDFService {
    */
   async createPdf(text: string, language: string): Promise<string> {
     try {
+      console.log(`Creating PDF for translated text in ${language}`);
       const textPath = this.tempFileManager.createTempFile('content', '.txt');
       fs.writeFileSync(textPath, text);
       
       const outputPdfPath = this.tempFileManager.createTempFile('translated', '.pdf');
       
       // Use Python script to generate PDF
-      await execAsync(`python3 scripts/pdf_processor.py create_pdf "${textPath}" "${outputPdfPath}" "${language}"`);
+      const command = `${PYTHON_PATH} "${this.pythonScriptPath}" create_pdf "${textPath}" "${outputPdfPath}" "${language}"`;
+      console.log(`Executing: ${command}`);
+      
+      const startTime = Date.now();
+      await execAsync(command);
+      const duration = Date.now() - startTime;
+      console.log(`PDF creation completed in ${duration}ms`);
       
       if (!fs.existsSync(outputPdfPath)) {
         throw new Error('Failed to create PDF file');
@@ -84,6 +123,7 @@ export class PDFService {
     targetLanguage: string
   ): Promise<string> {
     try {
+      console.log(`Creating dual-language PDF (${sourceLanguage} → ${targetLanguage})`);
       const originalTextPath = this.tempFileManager.createTempFile('original', '.txt');
       const translatedTextPath = this.tempFileManager.createTempFile('translated', '.txt');
       
@@ -93,9 +133,13 @@ export class PDFService {
       const outputPdfPath = this.tempFileManager.createTempFile('dual-language', '.pdf');
       
       // Use Python script to generate dual-language PDF
-      await execAsync(
-        `python3 scripts/pdf_processor.py create_dual_pdf "${originalTextPath}" "${translatedTextPath}" "${outputPdfPath}" "${sourceLanguage}" "${targetLanguage}"`
-      );
+      const command = `${PYTHON_PATH} "${this.pythonScriptPath}" create_dual_pdf "${originalTextPath}" "${translatedTextPath}" "${outputPdfPath}" "${sourceLanguage}" "${targetLanguage}"`;
+      console.log(`Executing: ${command}`);
+      
+      const startTime = Date.now();
+      await execAsync(command);
+      const duration = Date.now() - startTime;
+      console.log(`Dual-language PDF creation completed in ${duration}ms`);
       
       if (!fs.existsSync(outputPdfPath)) {
         throw new Error('Failed to create dual-language PDF');

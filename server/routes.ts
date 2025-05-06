@@ -218,12 +218,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
   return httpServer;
 }
 
-// Process translation asynchronously
+// Cache for document extraction (in-memory cache to avoid repeated processing)
+const extractionCache = new Map<string, string>();
+
+// Process translation asynchronously with optimizations
 async function processTranslation(
   documentId: number, 
   targetLanguage: string, 
   outputFormat: string
 ): Promise<void> {
+  console.log(`Starting translation process for document ${documentId} to ${targetLanguage} in ${outputFormat} format`);
+  
   try {
     const document = await storage.getDocument(documentId);
     if (!document) {
@@ -232,50 +237,75 @@ async function processTranslation(
 
     // Update status to processing
     await storage.updateDocument(documentId, { status: "processing" });
-
-    // Step 1: Extract text from PDF
+    
+    // Check if we need to extract text or can use cache
+    const cacheKey = document.storagePath;
     let extractedText: string;
     
-    // Check if we need OCR
-    const needsOcr = await pdfService.needsOcr(document.storagePath);
-    
-    if (needsOcr) {
-      // Use OCR to extract text
-      await storage.updateDocument(documentId, { status: "ocr_processing" });
-      extractedText = await pythonService.extractTextWithOcr(document.storagePath);
+    if (extractionCache.has(cacheKey)) {
+      console.log(`Using cached text extraction for ${document.originalName}`);
+      extractedText = extractionCache.get(cacheKey)!;
     } else {
-      // Extract text directly from PDF
-      extractedText = await pdfService.extractText(document.storagePath);
-    }
+      console.log(`Extracting text from ${document.originalName}`);
+      
+      // Check if we need OCR
+      const needsOcr = await pdfService.needsOcr(document.storagePath);
+      
+      if (needsOcr) {
+        // Use OCR to extract text
+        console.log(`Using OCR for document ${documentId}`);
+        await storage.updateDocument(documentId, { status: "ocr_processing" });
+        extractedText = await pythonService.extractTextWithOcr(document.storagePath);
+      } else {
+        // Extract text directly from PDF
+        console.log(`Using direct extraction for document ${documentId}`);
+        extractedText = await pdfService.extractText(document.storagePath);
+      }
 
-    if (!extractedText) {
-      throw new Error("Failed to extract text from PDF");
+      if (!extractedText) {
+        throw new Error("Failed to extract text from PDF");
+      }
+      
+      // Cache the extracted text
+      extractionCache.set(cacheKey, extractedText);
     }
 
     // Update status to translating
     await storage.updateDocument(documentId, { status: "translating" });
+    console.log(`Starting translation from ${document.originalLanguage} to ${targetLanguage}`);
 
-    // Step 2: Translate text
-    const translatedText = await pythonService.translateText(
-      extractedText,
-      document.originalLanguage || "auto",
-      targetLanguage
-    );
+    // Fast path: if source and target languages are the same, skip translation
+    let translatedText: string;
+    if (document.originalLanguage === targetLanguage) {
+      console.log(`Source and target languages are the same (${targetLanguage}), skipping translation`);
+      translatedText = extractedText;
+    } else {
+      // Step 2: Translate text
+      console.log(`Translating document ${documentId} content`);
+      translatedText = await pythonService.translateText(
+        extractedText,
+        document.originalLanguage || "auto",
+        targetLanguage
+      );
 
-    if (!translatedText) {
-      throw new Error("Translation failed");
+      if (!translatedText) {
+        throw new Error("Translation failed");
+      }
     }
 
     // Step 3: Generate output document
     let outputFilePath: string;
     await storage.updateDocument(documentId, { status: "generating_output" });
+    console.log(`Generating ${outputFormat} output for document ${documentId}`);
 
     if (outputFormat === "txt") {
-      // Create text file
+      // Create text file (fastest option)
       outputFilePath = tempFileManager.createTempFile("translated", ".txt");
       fs.writeFileSync(outputFilePath, translatedText);
+      console.log(`Text file output created at ${outputFilePath}`);
     } else if (outputFormat === "dual") {
       // Create dual-language PDF
+      console.log(`Creating dual-language PDF for document ${documentId}`);
       outputFilePath = await pdfService.createDualLanguagePdf(
         extractedText,
         translatedText,
@@ -284,6 +314,7 @@ async function processTranslation(
       );
     } else {
       // Create translated PDF
+      console.log(`Creating translated PDF for document ${documentId}`);
       outputFilePath = await pdfService.createPdf(translatedText, targetLanguage);
     }
 
@@ -292,6 +323,8 @@ async function processTranslation(
       translatedPath: outputFilePath,
       status: "completed"
     });
+    
+    console.log(`Translation process completed for document ${documentId}`);
   } catch (error) {
     console.error(`Error processing translation for document ${documentId}:`, error);
     await storage.updateDocument(documentId, { status: "error" });

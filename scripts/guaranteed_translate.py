@@ -112,6 +112,10 @@ def guaranteed_translate_pdf(input_path, output_path, source_lang, target_lang):
         # Create a new document
         new_doc = fitz.open()
         
+        # Initialize counters for overall statistics
+        total_processed_spans = 0
+        total_translated_spans = 0
+        
         # Process each page
         for page_num in range(len(doc)):
             print(f"Processing page {page_num+1}/{len(doc)}")
@@ -148,6 +152,7 @@ def guaranteed_translate_pdf(input_path, output_path, source_lang, target_lang):
                     for line in block.get("lines", []):
                         for span in line.get("spans", []):
                             processed_spans += 1
+                            total_processed_spans += 1
                             text = span.get("text", "").strip()
                             
                             # Skip empty or very short text
@@ -171,6 +176,7 @@ def guaranteed_translate_pdf(input_path, output_path, source_lang, target_lang):
                                 # Count translations
                                 if text.lower() != translated.lower():
                                     translated_spans += 1
+                                    total_translated_spans += 1
                                 
                                 # Create a white rectangle to cover original text
                                 rect = fitz.Rect(
@@ -206,7 +212,7 @@ def guaranteed_translate_pdf(input_path, output_path, source_lang, target_lang):
         doc.close()
         
         print(f"Guaranteed translation saved to: {output_path}")
-        print(f"Summary: Processed {processed_spans} text spans, translated {translated_spans} spans")
+        print(f"Summary: Processed {total_processed_spans} text spans, translated {total_translated_spans} spans")
         return True
         
     except Exception as e:

@@ -19,6 +19,7 @@ import io
 import re
 import argparse
 import tempfile
+import uuid
 import fitz  # PyMuPDF - for preserving images in PDFs
 
 # Configure pytesseract path (adjust if needed)
@@ -575,22 +576,36 @@ def translate_pdf_with_images(input_pdf_path, output_pdf_path, source_lang, targ
             shutil.copy(input_pdf_path, output_pdf_path)
             return True
 
+        # IMPROVED METHOD: First extract and translate all text
+        print(f"Extracting and translating text from PDF...")
+        
+        # Extract text to a temporary file
+        temp_text_path = f"/tmp/extract-for-translation-{uuid.uuid4()}.txt"
+        extract_text(input_pdf_path, temp_text_path)
+        
+        with open(temp_text_path, 'r', encoding='utf-8') as f:
+            text_content = f.read()
+        
+        # Translate the extracted text
+        print(f"Translating extracted text...")
+        translator = GoogleTranslator(source=source_code if source_code != 'auto' else 'auto', 
+                                      target=target_code)
+        
+        # Create a mapping of original text to translated text for all blocks
+        translation_mapping = {}
+        
         # Open the PDF with PyMuPDF
         pdf_document = fitz.open(input_pdf_path)
-        translator = GoogleTranslator(source=source_code if source_code != 'auto' else 'auto', 
-                                     target=target_code)
-        
-        # Create a new PDF document for the output
         output_document = fitz.open()
         
-        # Process each page
+        # STEP 1: Process each page
         for page_idx, page in enumerate(pdf_document):
             print(f"Processing page {page_idx+1}/{len(pdf_document)}")
             
             # Create a new page with the same dimensions
             new_page = output_document.new_page(width=page.rect.width, height=page.rect.height)
             
-            # STEP 1: Copy the entire page as background (preserves ALL images and layout elements)
+            # First, copy the entire page as background (preserves all images and layout)
             new_page.show_pdf_page(
                 new_page.rect,
                 pdf_document,
@@ -602,7 +617,7 @@ def translate_pdf_with_images(input_pdf_path, output_pdf_path, source_lang, targ
                 rotate=0
             )
             
-            # Extract and explicitly handle images if needed
+            # Count images on the page for logging
             images = page.get_images(full=True)
             if images:
                 print(f"Found {len(images)} images on page {page_idx+1}")
@@ -611,37 +626,49 @@ def translate_pdf_with_images(input_pdf_path, output_pdf_path, source_lang, targ
             text_blocks = page.get_text("blocks")
             print(f"Found {len(text_blocks)} text blocks on page {page_idx+1}")
             
-            # STEP 2: Overlay the translated text with semi-transparent background
-            for block in text_blocks:
+            # STEP 2: Process each text block
+            for block_idx, block in enumerate(text_blocks):
                 # Check if this is a text block (type 0)
                 if block[6] == 0:  # 0 = text block
                     rect = fitz.Rect(block[:4])
                     text = block[4]
                     
                     # Skip very short text (likely not meaningful)
-                    if len(text.strip()) < 3:
+                    if len(text.strip()) < 2:
                         continue
                     
                     try:
-                        # Translate the text
-                        translated = translator.translate(text)
+                        # Get or create the translation for this text block
+                        if text not in translation_mapping:
+                            translated = translator.translate(text)
+                            translation_mapping[text] = translated
+                            print(f"Block {block_idx} translated: '{text[:30]}...' → '{translated[:30]}...'")
+                        else:
+                            translated = translation_mapping[text]
                         
-                        # Create a semi-transparent white rectangle to cover the original text
-                        # The opacity value (0.9) preserves some of the background
-                        new_page.draw_rect(rect, color=(1, 1, 1), fill=(1, 1, 1), opacity=0.9)
+                        # Create a white rectangle to cover the original text
+                        # Adjustable opacity for better readability (0.95 is nearly opaque)
+                        new_page.draw_rect(rect, color=(1, 1, 1), fill=(1, 1, 1), opacity=0.95)
                         
-                        # Insert the translated text
+                        # Insert the translated text - using a smaller font to fit longer translations
+                        fontsize = 10  # Slightly smaller than original to accommodate expanded text
+                        
+                        # Use a bold font for headings (heuristic based on block position and text length)
+                        is_heading = rect.y0 < 100 or len(text.strip()) < 50
+                        fontname = "helv-b" if is_heading else "helv"
+                        
+                        # Insert the translated text with word wrapping
                         new_page.insert_textbox(
                             rect,
                             translated,
-                            fontsize=11,  # Adjust as needed
-                            fontname="helv",  # Use a standard font that supports most characters
+                            fontsize=fontsize,
+                            fontname=fontname,
                             color=(0, 0, 0),
                             align=0
                         )
                     except Exception as e:
-                        print(f"Error translating text block: {e}")
-                        # If translation fails, keep the original text
+                        print(f"Error translating text block {block_idx}: {e}")
+                        # If translation fails, leave the original text visible
                         continue
             
             print(f"Finished processing page {page_idx+1}")
@@ -650,6 +677,10 @@ def translate_pdf_with_images(input_pdf_path, output_pdf_path, source_lang, targ
         output_document.save(output_pdf_path)
         output_document.close()
         pdf_document.close()
+        
+        # Clean up temp file
+        if os.path.exists(temp_text_path):
+            os.remove(temp_text_path)
         
         print(f"PDF translated successfully to {output_pdf_path}")
         return True

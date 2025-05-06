@@ -322,12 +322,27 @@ def translate_text(input_path, output_path, source_lang, target_lang):
         with open(input_path, 'r', encoding='utf-8') as file:
             text = file.read()
         
-        # Format language codes properly for Google Translator
-        source_code = format_language_code(source_lang)
-        target_code = format_language_code(target_lang)
+        # CRITICAL FIX: Use ISO language codes directly
+        source_code = source_lang  # Use ISO code directly 
+        target_code = target_lang  # Use ISO code directly
         
-        print(f"Translating from {source_lang} ({source_code}) to {target_lang} ({target_code})")
+        print(f"Translating from {source_lang} to {target_lang} using direct ISO codes")
         
+        # Test sample translation to verify the configuration
+        test_text = "This is a test sentence."
+        if source_code == "ca":
+            test_text = "Aquesta és una frase de prova."
+        elif source_code == "es":
+            test_text = "Esta es una frase de prueba."
+            
+        try:
+            print(f"Testing translation configuration with: '{test_text}'")
+            test_translator = GoogleTranslator(source=source_code, target=target_code)
+            test_result = test_translator.translate(test_text)
+            print(f"Test translation result: '{test_result}'")
+        except Exception as test_err:
+            print(f"WARNING: Test translation failed: {test_err}")
+            
         # Handle special case when source and target are the same
         if source_lang == target_lang:
             print("Source and target languages are the same, skipping translation")
@@ -359,8 +374,8 @@ def translate_text(input_path, output_path, source_lang, target_lang):
             print("Text is already short, using full text for translation")
             
         # Use Google Translator with optimized settings
-        translator = GoogleTranslator(source=source_code if source_code != 'auto' else 'auto', 
-                                     target=target_code)
+        # FIXED: Use direct ISO codes without format_language_code
+        translator = GoogleTranslator(source=source_code, target=target_code)
         
         # Split text into chunks to avoid exceeding API limits
         # Using larger chunks and fewer iterations for faster translation

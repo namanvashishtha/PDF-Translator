@@ -151,4 +151,37 @@ export class PDFService {
       throw new Error(`Failed to create dual-language PDF: ${error}`);
     }
   }
+  
+  /**
+   * Translates a PDF while preserving images and layout
+   */
+  async translatePdfWithImages(
+    inputPdfPath: string,
+    sourceLanguage: string, 
+    targetLanguage: string
+  ): Promise<string> {
+    try {
+      console.log(`Translating PDF with image preservation from ${sourceLanguage} to ${targetLanguage}`);
+      
+      const outputPdfPath = this.tempFileManager.createTempFile('translated-with-images', '.pdf');
+      
+      // Use Python script to translate PDF while preserving images
+      const command = `${PYTHON_PATH} "${this.pythonScriptPath}" translate_pdf "${inputPdfPath}" "${outputPdfPath}" "${sourceLanguage}" "${targetLanguage}"`;
+      console.log(`Executing: ${command}`);
+      
+      const startTime = Date.now();
+      await execAsync(command);
+      const duration = Date.now() - startTime;
+      console.log(`PDF translation with image preservation completed in ${duration}ms`);
+      
+      if (!fs.existsSync(outputPdfPath)) {
+        throw new Error('Failed to translate PDF with image preservation');
+      }
+      
+      return outputPdfPath;
+    } catch (error) {
+      console.error('Error translating PDF with image preservation:', error);
+      throw new Error(`Failed to translate PDF with image preservation: ${error}`);
+    }
+  }
 }

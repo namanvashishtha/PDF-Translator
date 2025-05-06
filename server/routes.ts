@@ -339,6 +339,14 @@ async function processTranslation(
         document.originalLanguage || "Unknown",
         targetLanguage
       );
+    } else if (preserveImages && document.storagePath) {
+      // Create translated PDF with preserved images
+      console.log(`Creating translated PDF with preserved images for document ${documentId}`);
+      outputFilePath = await pdfService.translatePdfWithImages(
+        document.storagePath,
+        document.originalLanguage || "auto",
+        targetLanguage
+      );
     } else {
       // Create translated PDF
       console.log(`Creating translated PDF for document ${documentId}`);

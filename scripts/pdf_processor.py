@@ -70,6 +70,13 @@ def setup_args():
     dual_pdf_parser.add_argument('source_lang', help='Source language code')
     dual_pdf_parser.add_argument('target_lang', help='Target language code')
     
+    # Translate PDF with images
+    translate_pdf_parser = subparsers.add_parser('translate_pdf', help='Translate PDF while preserving images')
+    translate_pdf_parser.add_argument('input_path', help='Path to input PDF file')
+    translate_pdf_parser.add_argument('output_path', help='Path to output PDF file')
+    translate_pdf_parser.add_argument('source_lang', help='Source language code')
+    translate_pdf_parser.add_argument('target_lang', help='Target language code')
+    
     return parser.parse_args()
 
 def extract_text(pdf_path, output_path):
@@ -552,6 +559,95 @@ def get_language_name(lang_code):
     }
     return language_names.get(lang_code, lang_code.capitalize())
 
+def translate_pdf_with_images(input_pdf_path, output_pdf_path, source_lang, target_lang):
+    """Translate a PDF while preserving images and layout"""
+    try:
+        print(f"Translating PDF with image preservation from {source_lang} to {target_lang}")
+        
+        # Format language codes properly
+        source_code = format_language_code(source_lang)
+        target_code = format_language_code(target_lang)
+        
+        # If source and target are the same, just copy the file
+        if source_lang == target_lang:
+            print("Source and target languages are the same, copying file")
+            import shutil
+            shutil.copy(input_pdf_path, output_pdf_path)
+            return True
+
+        # Open the PDF with PyMuPDF
+        pdf_document = fitz.open(input_pdf_path)
+        translator = GoogleTranslator(source=source_code if source_code != 'auto' else 'auto', 
+                                     target=target_code)
+        
+        # Create a new PDF document for the output
+        output_document = fitz.open()
+        
+        # Process each page
+        for page_idx, page in enumerate(pdf_document):
+            print(f"Processing page {page_idx+1}/{len(pdf_document)}")
+            
+            # Extract text blocks from the page
+            text_blocks = page.get_text("blocks")
+            
+            # Create a new page with the same dimensions
+            new_page = output_document.new_page(width=page.rect.width, height=page.rect.height)
+            
+            # First, copy all images and drawings from original page
+            new_page.show_pdf_page(
+                new_page.rect,
+                pdf_document,
+                page_idx,
+                clip=None,
+                keep_proportion=True,
+                overlay=False,
+                oc=0,
+                rotate=0
+            )
+            
+            # Then overlay the translated text
+            for block in text_blocks:
+                # Check if this is a text block (type 0)
+                if block[6] == 0:  # 0 = text block
+                    rect = fitz.Rect(block[:4])
+                    text = block[4]
+                    
+                    # Skip very short text (likely not meaningful)
+                    if len(text.strip()) < 3:
+                        continue
+                    
+                    try:
+                        # Translate the text
+                        translated = translator.translate(text)
+                        
+                        # Create a white rectangle to cover the original text
+                        new_page.draw_rect(rect, color=(1, 1, 1), fill=(1, 1, 1))
+                        
+                        # Insert the translated text
+                        new_page.insert_textbox(
+                            rect,
+                            translated,
+                            fontsize=11,  # Adjust as needed
+                            color=(0, 0, 0),
+                            align=0
+                        )
+                    except Exception as e:
+                        print(f"Error translating text block: {e}")
+            
+            print(f"Finished processing page {page_idx+1}")
+        
+        # Save the translated document
+        output_document.save(output_pdf_path)
+        output_document.close()
+        pdf_document.close()
+        
+        print(f"PDF translated successfully to {output_pdf_path}")
+        return True
+        
+    except Exception as e:
+        print(f"Error translating PDF with images: {e}", file=sys.stderr)
+        return False
+
 if __name__ == "__main__":
     args = setup_args()
     
@@ -586,6 +682,15 @@ if __name__ == "__main__":
             args.original_text_path,
             args.translated_text_path,
             args.pdf_path,
+            args.source_lang,
+            args.target_lang
+        )
+        sys.exit(0 if success else 1)
+    
+    elif args.command == 'translate_pdf':
+        success = translate_pdf_with_images(
+            args.input_path,
+            args.output_path,
             args.source_lang,
             args.target_lang
         )

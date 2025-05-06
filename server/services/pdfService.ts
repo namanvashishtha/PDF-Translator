@@ -181,11 +181,57 @@ export class PDFService {
         console.log(`Using Spanish (es) as fallback source language instead of ${sourceLanguage}`);
       }
       
-      // Special case for Spanish to English - use the extreme translator
+      // Special case for Spanish to English - use plain text translators first
       // This is our most common translation case and needs special handling
       const isSpanishToEnglish = (actualSourceLang === "es" && targetLanguage === "en");
       if (isSpanishToEnglish) {
-        console.log('CRITICAL CASE: Spanish to English detected - using extreme translation method');
+        console.log('CRITICAL CASE: Spanish to English detected - using ultra-simple text-only translation');
+        
+        // TEXT-ONLY METHOD - absolute simplest approach with virtually no formatting
+        const textOnlyScript = path.join(process.cwd(), 'scripts', 'text_only_translate.py');
+        const textOnlyCommand = `${PYTHON_PATH} "${textOnlyScript}" "${inputPdfPath}" "${outputPdfPath}" "${actualSourceLang}" "${targetLanguage}"`;
+        console.log(`Executing text-only translator: ${textOnlyCommand}`);
+        
+        try {
+          const startTime = Date.now();
+          await execAsync(textOnlyCommand);
+          const duration = Date.now() - startTime;
+          console.log(`Text-only translation completed in ${duration}ms`);
+          
+          // Check if output file exists and has content
+          if (fs.existsSync(outputPdfPath) && fs.statSync(outputPdfPath).size > 0) {
+            console.log(`Successfully translated PDF with text-only method`);
+            return outputPdfPath;
+          }
+          
+          // If text-only method failed, try pure text method
+          console.log('Text-only translation failed or output file is empty, trying pure text method');
+        } catch (textOnlyError) {
+          console.error('Text-only translation failed, trying pure text method:', textOnlyError);
+        }
+        
+        // PURE TEXT METHOD - creates a simple text-only PDF with slightly better formatting
+        const pureTextScript = path.join(process.cwd(), 'scripts', 'pure_text_translate.py');
+        const pureTextCommand = `${PYTHON_PATH} "${pureTextScript}" "${inputPdfPath}" "${outputPdfPath}" "${actualSourceLang}" "${targetLanguage}"`;
+        console.log(`Executing pure text Spanish-English translator: ${pureTextCommand}`);
+        
+        try {
+          const startTime = Date.now();
+          await execAsync(pureTextCommand);
+          const duration = Date.now() - startTime;
+          console.log(`Pure text Spanish-English translation completed in ${duration}ms`);
+          
+          // Check if output file exists and has content
+          if (fs.existsSync(outputPdfPath) && fs.statSync(outputPdfPath).size > 0) {
+            console.log(`Successfully translated PDF with pure text method`);
+            return outputPdfPath;
+          }
+          
+          // If pure text method failed, try extreme method
+          console.log('Pure text translation failed or output file is empty, trying extreme method');
+        } catch (pureTextError) {
+          console.error('Pure text translation failed, trying extreme method:', pureTextError);
+        }
         
         // EXTREME METHOD - completely rebuilds the PDF with optimal readability
         const extremeScript = path.join(process.cwd(), 'scripts', 'extreme_translate.py');

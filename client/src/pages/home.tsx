@@ -32,8 +32,8 @@ export default function Home() {
   
   const [currentDocumentId, setCurrentDocumentId] = useState<number | null>(null);
   const [selectedOutputFormat, setSelectedOutputFormat] = useState<"pdf" | "txt" | "dual">("pdf");
-  const [detectedLanguage, setDetectedLanguage] = useState<string>("en");
-  const [targetLanguage, setTargetLanguage] = useState<string>("es");
+  const [detectedLanguage, setDetectedLanguage] = useState<string>("es");
+  const [targetLanguage, setTargetLanguage] = useState<string>("en");
   const [preserveImages, setPreserveImages] = useState<boolean>(true);
   
   // Translation mutation

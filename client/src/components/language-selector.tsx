@@ -46,11 +46,11 @@ export function LanguageSelector({
         {/* Source Language */}
         <div>
           <Label className="block text-sm font-medium text-gray-700 mb-1">
-            Detected Language
+            <span className="text-base">Source Language (Original Document)</span>
           </Label>
           <Select value={detectedLanguage} onValueChange={setDetectedLanguage}>
             <SelectTrigger className="w-full">
-              <SelectValue placeholder="Select language" />
+              <SelectValue placeholder="Select source language" />
             </SelectTrigger>
             <SelectContent>
               {languages.map((lang) => (
@@ -61,29 +61,30 @@ export function LanguageSelector({
             </SelectContent>
           </Select>
           <p className="mt-1 text-xs text-gray-500">
-            We've detected the source language. You can change it if needed.
+            This is the language of your original document. Our system has detected it automatically.
           </p>
         </div>
 
         {/* Target Language */}
         <div>
           <Label className="block text-sm font-medium text-gray-700 mb-1">
-            Target Language
+            <span className="text-lg text-primary font-bold">Target Language (Translation Output)</span>
           </Label>
           <Select value={targetLanguage} onValueChange={setTargetLanguage}>
-            <SelectTrigger className="w-full">
-              <SelectValue placeholder="Select language" />
+            <SelectTrigger className="w-full border-2 border-primary">
+              <SelectValue placeholder="Select target language" />
             </SelectTrigger>
             <SelectContent>
               {languages.map((lang) => (
                 <SelectItem key={lang.code} value={lang.code}>
-                  {lang.flag} {lang.name}
+                  {lang.flag} {lang.name} {lang.code === "en" && "- English"}
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
-          <p className="mt-1 text-xs text-gray-500">
-            Select the language you want to translate the document into.
+          <p className="mt-1 text-sm text-gray-700 bg-yellow-50 p-2 rounded border border-yellow-200">
+            <span className="font-semibold">IMPORTANT:</span> Select the language you want your 
+            document to be translated INTO. For Spanish→English translation, select English here.
           </p>
         </div>
 
@@ -139,10 +140,22 @@ export function LanguageSelector({
         <Button variant="outline" onClick={onBack} className="inline-flex items-center">
           <ArrowLeft className="mr-1 h-4 w-4" /> Back
         </Button>
-        <Button onClick={onTranslate}>
-          Translate Document
+        <Button 
+          onClick={onTranslate} 
+          className="text-lg font-bold bg-primary hover:bg-primary/90 px-6 py-2"
+        >
+          Translate from {getLanguageName(detectedLanguage)} to {getLanguageName(targetLanguage)}
         </Button>
       </div>
+      
+      {/* Add clear warning about common confusion */}
+      {detectedLanguage === targetLanguage && (
+        <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-md text-red-800 text-sm">
+          <strong>Warning:</strong> You have selected the same language for both source and target. 
+          This means no translation will occur. If you want to translate the document, please select 
+          different languages.
+        </div>
+      )}
     </div>
   );
 }

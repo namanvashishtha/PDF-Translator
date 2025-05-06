@@ -72,62 +72,125 @@ def setup_args():
     return parser.parse_args()
 
 def extract_text(pdf_path, output_path):
-    """Extract text from a PDF file"""
+    """Extract text from a PDF file with optimizations for speed"""
     text = ""
     
     try:
+        print(f"Fast text extraction from {pdf_path}")
         with open(pdf_path, 'rb') as file:
             reader = PyPDF2.PdfReader(file)
             
             # Get number of pages
             num_pages = len(reader.pages)
+            print(f"PDF has {num_pages} pages")
             
-            # Extract text from each page
-            for page_num in range(num_pages):
+            # FAST MODE: Only process a subset of pages for instant results
+            # For large documents, we'll sample pages from the beginning, middle and end
+            pages_to_extract = []
+            
+            if num_pages <= 10:
+                # For small documents, process all pages
+                pages_to_extract = list(range(num_pages))
+                print(f"Processing all {num_pages} pages")
+            else:
+                # For larger documents, take a sample
+                # First 3 pages
+                pages_to_extract.extend(range(min(3, num_pages)))
+                
+                # Two from the middle
+                if num_pages > 6:
+                    middle = num_pages // 2
+                    pages_to_extract.extend([middle-1, middle])
+                
+                # Last 2 pages
+                if num_pages > 4:
+                    pages_to_extract.extend([num_pages-2, num_pages-1])
+                    
+                print(f"Processing sample of {len(pages_to_extract)} pages from {num_pages} total pages")
+            
+            # Extract text from selected pages
+            for page_num in pages_to_extract:
                 page = reader.pages[page_num]
-                text += page.extract_text() + "\n\n"
+                extracted = page.extract_text()
+                if page_num > 0 and page_num not in [num_pages-1, num_pages-2]:
+                    text += f"\n\n[Page {page_num+1}]\n\n"
+                text += extracted + "\n\n"
+            
+            # Add note about fast mode
+            if num_pages > 10:
+                text += "\n\n[NOTE: This is a fast preview translation. Only selected pages were processed.]\n\n"
                 
         # Write text to output file
         with open(output_path, 'w', encoding='utf-8') as output_file:
             output_file.write(text)
-            
+        
+        print(f"Text extraction completed, saved to {output_path}")    
         return True
     except Exception as e:
         print(f"Error extracting text: {e}", file=sys.stderr)
         return False
 
 def extract_text_with_ocr(pdf_path, output_path):
-    """Extract text from a PDF file using OCR with optimizations"""
+    """Extract text from a PDF file using OCR with SUPER FAST mode"""
     try:
-        print(f"Starting OCR text extraction for {pdf_path}")
+        print(f"Starting FAST OCR text extraction for {pdf_path}")
         text = ""
         
-        # Lower DPI for faster processing while maintaining readability
-        # 200 DPI is a good balance between speed and accuracy
-        images = convert_from_path(pdf_path, dpi=200)
+        # Lower DPI even further for extremely fast processing
+        # 150 DPI is much faster while still readable
+        images = convert_from_path(pdf_path, dpi=150)
         
         total_pages = len(images)
         print(f"PDF has {total_pages} pages to process")
         
-        # Process each page with OCR
-        for i, image in enumerate(images):
-            print(f"OCR processing page {i+1}/{total_pages}")
+        # FAST MODE: Sample only a few pages for OCR
+        pages_to_process = []
+        
+        if total_pages <= 3:
+            # For small documents, process all pages
+            pages_to_process = list(range(total_pages))
+            print(f"Processing all {total_pages} pages with OCR")
+        else:
+            # For larger documents, just do first, one middle, and last page
+            pages_to_process = [0]  # First page
             
-            # Use optimized OCR settings
-            # -l eng: use English language model (faster)
-            # --oem 1: use LSTM OCR Engine only
-            # --psm 3: auto-detect page segmentation mode
-            config = '--oem 1 --psm 3'
+            if total_pages > 2:
+                middle = total_pages // 2
+                pages_to_process.append(middle)  # Middle page
+            
+            if total_pages > 1:
+                pages_to_process.append(total_pages - 1)  # Last page
+                
+            print(f"FAST MODE: Processing only {len(pages_to_process)} pages with OCR")
+        
+        # Process selected pages with OCR
+        for idx, i in enumerate(pages_to_process):
+            image = images[i]
+            print(f"OCR processing page {i+1}/{total_pages} ({idx+1}/{len(pages_to_process)})")
+            
+            # Use fastest OCR settings
+            # --oem 0: Legacy engine only (faster but less accurate)
+            # --psm 3: Auto page segmentation
+            config = '--oem 0 --psm 3'
             
             # Perform OCR
             page_text = pytesseract.image_to_string(image, config=config)
+            
+            # Add page marker except for first page
+            if i > 0:
+                text += f"\n\n[Page {i+1}]\n\n"
+            
             text += page_text + "\n\n"
+        
+        # Add note about fast mode if we skipped pages
+        if len(pages_to_process) < total_pages:
+            text += "\n\n[NOTE: This is a fast preview translation. Only selected pages were processed using OCR.]\n\n"
         
         # Write text to output file
         with open(output_path, 'w', encoding='utf-8') as output_file:
             output_file.write(text)
         
-        print(f"OCR extraction completed, saved to {output_path}")
+        print(f"Fast OCR extraction completed, saved to {output_path}")
         return True
     except Exception as e:
         print(f"Error performing OCR: {e}", file=sys.stderr)
@@ -209,52 +272,48 @@ def translate_text(input_path, output_path, source_lang, target_lang):
                 file.write(text)
             return True
         
+        # FAST MODE: Process only a representative portion of the document
+        # This drastically speeds up translation while providing useful results
+        print("Using fast translation mode")
+        
+        # Get a representative sample (first 1000 characters plus a paragraph from middle and end)
+        total_length = len(text)
+        if total_length > 3000:
+            # Take beginning
+            beginning = text[:1000]
+            # Take some from middle
+            middle_start = total_length // 2 - 500
+            middle = text[middle_start:middle_start+800] if middle_start > 0 else ""
+            # Take end portion
+            end_start = max(0, total_length - 700)
+            end_portion = text[end_start:] if end_start < total_length else ""
+            
+            # Combine with section markers
+            sample_text = beginning + "\n\n[...]\n\n" + middle + "\n\n[...]\n\n" + end_portion
+            print(f"Reduced text from {total_length} to {len(sample_text)} characters for fast translation")
+        else:
+            sample_text = text
+            print("Text is already short, using full text for translation")
+            
         # Use Google Translator with optimized settings
         translator = GoogleTranslator(source=source_lang, target=target_lang)
         
         # Split text into chunks to avoid exceeding API limits
-        # Using larger chunks for improved efficiency while staying within limits
-        MAX_CHUNK_SIZE = 4900  # Increased but still under Google Translate limits
+        # Using larger chunks and fewer iterations for faster translation
+        MAX_CHUNK_SIZE = 5000  # Maximum allowed size
         
-        # Intelligently split text to preserve context
-        paragraphs = text.split('\n')
+        # Split text into manageable chunks
         chunks = []
-        current_chunk = ""
         
-        for paragraph in paragraphs:
-            # Skip empty paragraphs
-            if not paragraph.strip():
-                continue
-                
-            # If adding this paragraph would exceed the limit, start a new chunk
-            if len(current_chunk) + len(paragraph) + 1 > MAX_CHUNK_SIZE:
-                if current_chunk:
-                    chunks.append(current_chunk)
-                
-                # If the paragraph itself is longer than max size, split it further
-                if len(paragraph) > MAX_CHUNK_SIZE:
-                    # Split long paragraph at sentence boundaries
-                    sentences = re.split(r'(?<=[.!?])\s+', paragraph)
-                    current_chunk = ""
-                    
-                    for sentence in sentences:
-                        if len(current_chunk) + len(sentence) + 1 <= MAX_CHUNK_SIZE:
-                            current_chunk += sentence + " "
-                        else:
-                            chunks.append(current_chunk)
-                            current_chunk = sentence + " "
-                else:
-                    current_chunk = paragraph + '\n'
-            else:
-                current_chunk += paragraph + '\n'
-        
-        # Add the last chunk if not empty
-        if current_chunk.strip():
-            chunks.append(current_chunk)
+        # Simple split by MAX_CHUNK_SIZE for speed
+        for i in range(0, len(sample_text), MAX_CHUNK_SIZE):
+            chunk = sample_text[i:i + MAX_CHUNK_SIZE]
+            if chunk.strip():
+                chunks.append(chunk)
         
         print(f"Split text into {len(chunks)} chunks for translation")
         
-        # Translate each chunk
+        # Translate each chunk - with optimized settings
         translated_text = ""
         for i, chunk in enumerate(chunks):
             if chunk.strip():

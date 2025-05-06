@@ -64,6 +64,35 @@ export class PythonService {
   }
 
   /**
+   * Map language codes to ones supported by Google Translator
+   */
+  private mapLanguageCode(code: string): string {
+    // Language code mapping
+    const languageMapping: Record<string, string> = {
+      // ISO 639-1 language codes
+      'en': 'en',    // English
+      'es': 'es',    // Spanish
+      'fr': 'fr',    // French
+      'de': 'de',    // German
+      'it': 'it',    // Italian
+      'pt': 'pt',    // Portuguese
+      'nl': 'nl',    // Dutch
+      'ru': 'ru',    // Russian
+      'ja': 'ja',    // Japanese
+      'zh': 'zh-CN', // Chinese (simplified)
+      'ar': 'ar',    // Arabic
+      'ko': 'ko',    // Korean
+      'tr': 'tr',    // Turkish
+      'pl': 'pl',    // Polish
+      'sv': 'sv',    // Swedish
+      'hi': 'hi',    // Hindi
+      // Add more mappings as needed
+    };
+    
+    return languageMapping[code] || code;
+  }
+
+  /**
    * Translates text from source language to target language with optimized chunking
    */
   async translateText(
@@ -72,7 +101,11 @@ export class PythonService {
     targetLanguage: string
   ): Promise<string> {
     try {
-      console.log(`Translating text from ${sourceLanguage} to ${targetLanguage}...`);
+      // Clean up language codes for compatibility with Google Translator
+      const sourceCode = this.mapLanguageCode(sourceLanguage);
+      const targetCode = this.mapLanguageCode(targetLanguage);
+      
+      console.log(`Translating text from ${sourceLanguage} (${sourceCode}) to ${targetLanguage} (${targetCode})...`);
       
       // Don't translate if languages are the same
       if (sourceLanguage === targetLanguage) {
@@ -86,8 +119,8 @@ export class PythonService {
       // Write text to temporary file
       fs.writeFileSync(inputTextPath, text);
       
-      // Run translation using Python script
-      const command = `${PYTHON_PATH} "${this.pythonScriptPath}" translate "${inputTextPath}" "${outputTextPath}" "${sourceLanguage}" "${targetLanguage}"`;
+      // Run translation using Python script with mapped language codes
+      const command = `${PYTHON_PATH} "${this.pythonScriptPath}" translate "${inputTextPath}" "${outputTextPath}" "${sourceCode}" "${targetCode}"`;
       console.log(`Executing: ${command}`);
       await execAsync(command);
       

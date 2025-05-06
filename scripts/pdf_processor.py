@@ -223,6 +223,7 @@ def needs_ocr(pdf_path):
 def detect_language(pdf_path):
     """Detect the language of a PDF document"""
     try:
+        print(f"Detecting language for PDF: {os.path.basename(pdf_path)}")
         # First extract some text from the PDF
         with tempfile.NamedTemporaryFile(suffix='.txt', delete=False) as temp_file:
             text_path = temp_file.name
@@ -247,15 +248,64 @@ def detect_language(pdf_path):
         if text.strip():
             # Detect language using langdetect
             try:
-                lang = langdetect.detect(text)
+                # Get a sample of the text (up to 5000 chars) for faster detection
+                sample_text = text[:5000]
+                lang = langdetect.detect(sample_text)
+                print(f"Detected language: {lang}")
                 return lang
-            except:
+            except Exception as e:
+                print(f"Language detection failed: {e}", file=sys.stderr)
                 return "en"  # Default to English if detection fails
         else:
+            print("No text content found for language detection", file=sys.stderr)
             return "en"  # Default to English if no text was extracted
     except Exception as e:
         print(f"Error detecting language: {e}", file=sys.stderr)
         return "en"  # Default to English on error
+
+def format_language_code(code):
+    """Format language code properly for Google Translator API"""
+    # Map ISO 639-1 language codes to Google Translator codes
+    language_map = {
+        'en': 'english',
+        'es': 'spanish',
+        'fr': 'french',
+        'de': 'german',
+        'it': 'italian',
+        'pt': 'portuguese',
+        'ja': 'japanese',
+        'zh': 'chinese (simplified)',
+        'zh-cn': 'chinese (simplified)',
+        'zh-CN': 'chinese (simplified)',
+        'ru': 'russian',
+        'ar': 'arabic',
+        'hi': 'hindi',
+        'nl': 'dutch',
+        'ko': 'korean',
+        'tr': 'turkish',
+        'sv': 'swedish',
+        'pl': 'polish',
+        # Add more mappings as needed
+    }
+    
+    # Check both lowercase and original form
+    lower_code = code.lower() if isinstance(code, str) else ''
+    if lower_code in language_map:
+        return language_map[lower_code]
+        
+    # Try to clean up the code if it contains extraneous information
+    if isinstance(code, str) and len(code) > 5:
+        # Try to extract a code pattern at the end
+        import re
+        match = re.search(r'[a-z]{2}(?:-[a-z]{2})?$', lower_code)
+        if match:
+            extracted = match.group(0)
+            if extracted in language_map:
+                return language_map[extracted]
+    
+    # If all else fails, return as is (will use auto-detection)
+    return code if isinstance(code, str) else 'auto'
+
 
 def translate_text(input_path, output_path, source_lang, target_lang):
     """Translate text from source language to target language"""
@@ -263,7 +313,11 @@ def translate_text(input_path, output_path, source_lang, target_lang):
         with open(input_path, 'r', encoding='utf-8') as file:
             text = file.read()
         
-        print(f"Translating from {source_lang} to {target_lang}")
+        # Format language codes properly for Google Translator
+        source_code = format_language_code(source_lang)
+        target_code = format_language_code(target_lang)
+        
+        print(f"Translating from {source_lang} ({source_code}) to {target_lang} ({target_code})")
         
         # Handle special case when source and target are the same
         if source_lang == target_lang:
@@ -296,7 +350,8 @@ def translate_text(input_path, output_path, source_lang, target_lang):
             print("Text is already short, using full text for translation")
             
         # Use Google Translator with optimized settings
-        translator = GoogleTranslator(source=source_lang, target=target_lang)
+        translator = GoogleTranslator(source=source_code if source_code != 'auto' else 'auto', 
+                                     target=target_code)
         
         # Split text into chunks to avoid exceeding API limits
         # Using larger chunks and fewer iterations for faster translation

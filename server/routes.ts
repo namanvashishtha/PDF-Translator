@@ -83,13 +83,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Detect language asynchronously
       pythonService.detectLanguage(req.file.path)
         .then(async (language) => {
+          // Clean up language code, ensuring it's not the output of the detection script
+          let cleanLanguage = language;
+          
+          // Check if language is the full script output instead of just code
+          if (language.includes('Detecting language for') || language.includes('Fast text extraction')) {
+            console.log("Cleaning up detected language output:", language);
+            // Extract the actual language code (usually at the end)
+            const matches = language.match(/[a-z]{2}$/);
+            if (matches && matches.length > 0) {
+              cleanLanguage = matches[0];
+            } else {
+              // Default to English if we can't extract the language code
+              cleanLanguage = 'en';
+            }
+          }
+          
+          console.log(`Cleaned language code: "${cleanLanguage}"`);
+          
           await storage.updateDocument(document.id, { 
-            originalLanguage: language,
+            originalLanguage: cleanLanguage,
             status: "language_detected"
           });
         })
         .catch(error => {
           console.error("Language detection error:", error);
+          // Default to English on error
+          storage.updateDocument(document.id, { 
+            originalLanguage: 'en',
+            status: "language_detected"
+          });
         });
 
       return res.status(201).json({ document });

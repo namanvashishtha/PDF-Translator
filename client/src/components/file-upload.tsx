@@ -1,9 +1,10 @@
 import { Button } from "@/components/ui/button";
-import { FileUp, X, ArrowRight } from "lucide-react";
-import { useRef } from "react";
+import { FileUp, X, ArrowRight, Eye } from "lucide-react";
+import { useRef, useState } from "react";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useMutation } from "@tanstack/react-query";
+import { PDFPreview } from "./pdf-preview";
 
 interface FileUploadProps {
   fileSelected: boolean;
@@ -26,6 +27,7 @@ export function FileUpload({
 }: FileUploadProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
+  const [showPreview, setShowPreview] = useState(false);
 
   const uploadMutation = useMutation({
     mutationFn: async (file: File) => {
@@ -166,18 +168,40 @@ export function FileUpload({
                 <p className="text-xs text-gray-500">{fileSize}</p>
               </div>
             </div>
-            <button
-              type="button"
-              className="text-gray-500 hover:text-gray-700"
-              onClick={(e) => {
-                e.stopPropagation();
-                onRemoveFile();
-              }}
-            >
-              <X className="h-5 w-5" />
-            </button>
+            <div className="flex space-x-2">
+              <button
+                type="button"
+                className="text-blue-500 hover:text-blue-700"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowPreview(true);
+                }}
+                title="Preview PDF"
+              >
+                <Eye className="h-5 w-5" />
+              </button>
+              <button
+                type="button"
+                className="text-gray-500 hover:text-gray-700"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onRemoveFile();
+                }}
+                title="Remove file"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
           </div>
         </div>
+      )}
+      
+      {/* PDF Preview */}
+      {showPreview && fileInputRef.current?.files && fileInputRef.current.files[0] && (
+        <PDFPreview 
+          file={fileInputRef.current.files[0]} 
+          onClose={() => setShowPreview(false)} 
+        />
       )}
 
       <div className="mt-6 flex justify-end">

@@ -565,9 +565,12 @@ def translate_pdf_with_images(input_pdf_path, output_pdf_path, source_lang, targ
     try:
         print(f"Translating PDF with image preservation from {source_lang} to {target_lang}")
         
-        # Format language codes properly
-        source_code = format_language_code(source_lang)
-        target_code = format_language_code(target_lang)
+        # CRITICAL FIX: Do NOT format language codes - use the ISO 639-1 codes directly
+        # This was causing the translation to fail
+        source_code = source_lang  # Use ISO code directly
+        target_code = target_lang  # Use ISO code directly
+        
+        print(f"Using language codes: {source_code} → {target_code}")
         
         # If source and target are the same, just copy the file
         if source_lang == target_lang:
@@ -576,6 +579,18 @@ def translate_pdf_with_images(input_pdf_path, output_pdf_path, source_lang, targ
             shutil.copy(input_pdf_path, output_pdf_path)
             return True
 
+        # Test translation with a small sample to verify configuration
+        test_text = "This is a test translation."
+        if source_code == "ca":  # Sample text in Catalan
+            test_text = "Aquesta és una prova de traducció."
+        try:
+            print(f"Testing translation config with sample: '{test_text}'")
+            test_translator = GoogleTranslator(source=source_code, target=target_code)
+            test_result = test_translator.translate(test_text)
+            print(f"Translation test result: '{test_result}'")
+        except Exception as test_error:
+            print(f"WARNING: Test translation failed: {test_error}")
+        
         # IMPROVED METHOD: First extract and translate all text
         print(f"Extracting and translating text from PDF...")
         
@@ -588,8 +603,7 @@ def translate_pdf_with_images(input_pdf_path, output_pdf_path, source_lang, targ
         
         # Translate the extracted text
         print(f"Translating extracted text...")
-        translator = GoogleTranslator(source=source_code if source_code != 'auto' else 'auto', 
-                                      target=target_code)
+        translator = GoogleTranslator(source=source_code, target=target_code)
         
         # Create a mapping of original text to translated text for all blocks
         translation_mapping = {}

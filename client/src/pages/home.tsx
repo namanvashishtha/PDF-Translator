@@ -243,6 +243,10 @@ export default function Home() {
                 onFileSelect={handleFileSelect}
                 onRemoveFile={handleRemoveFile}
                 onContinue={handleProcessFile}
+                onDocumentUploaded={(documentId) => {
+                  console.log("Document uploaded with ID:", documentId);
+                  setCurrentDocumentId(documentId);
+                }}
               />
             )}
             

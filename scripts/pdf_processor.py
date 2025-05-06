@@ -587,13 +587,10 @@ def translate_pdf_with_images(input_pdf_path, output_pdf_path, source_lang, targ
         for page_idx, page in enumerate(pdf_document):
             print(f"Processing page {page_idx+1}/{len(pdf_document)}")
             
-            # Extract text blocks from the page
-            text_blocks = page.get_text("blocks")
-            
             # Create a new page with the same dimensions
             new_page = output_document.new_page(width=page.rect.width, height=page.rect.height)
             
-            # First, copy all images and drawings from original page
+            # STEP 1: Copy the entire page as background (preserves ALL images and layout elements)
             new_page.show_pdf_page(
                 new_page.rect,
                 pdf_document,
@@ -605,7 +602,16 @@ def translate_pdf_with_images(input_pdf_path, output_pdf_path, source_lang, targ
                 rotate=0
             )
             
-            # Then overlay the translated text
+            # Extract and explicitly handle images if needed
+            images = page.get_images(full=True)
+            if images:
+                print(f"Found {len(images)} images on page {page_idx+1}")
+                
+            # Extract text blocks from the page
+            text_blocks = page.get_text("blocks")
+            print(f"Found {len(text_blocks)} text blocks on page {page_idx+1}")
+            
+            # STEP 2: Overlay the translated text with semi-transparent background
             for block in text_blocks:
                 # Check if this is a text block (type 0)
                 if block[6] == 0:  # 0 = text block
@@ -620,19 +626,23 @@ def translate_pdf_with_images(input_pdf_path, output_pdf_path, source_lang, targ
                         # Translate the text
                         translated = translator.translate(text)
                         
-                        # Create a white rectangle to cover the original text
-                        new_page.draw_rect(rect, color=(1, 1, 1), fill=(1, 1, 1))
+                        # Create a semi-transparent white rectangle to cover the original text
+                        # The opacity value (0.9) preserves some of the background
+                        new_page.draw_rect(rect, color=(1, 1, 1), fill=(1, 1, 1), opacity=0.9)
                         
                         # Insert the translated text
                         new_page.insert_textbox(
                             rect,
                             translated,
                             fontsize=11,  # Adjust as needed
+                            fontname="helv",  # Use a standard font that supports most characters
                             color=(0, 0, 0),
                             align=0
                         )
                     except Exception as e:
                         print(f"Error translating text block: {e}")
+                        # If translation fails, keep the original text
+                        continue
             
             print(f"Finished processing page {page_idx+1}")
         
@@ -646,6 +656,8 @@ def translate_pdf_with_images(input_pdf_path, output_pdf_path, source_lang, targ
         
     except Exception as e:
         print(f"Error translating PDF with images: {e}", file=sys.stderr)
+        import traceback
+        traceback.print_exc()
         return False
 
 if __name__ == "__main__":

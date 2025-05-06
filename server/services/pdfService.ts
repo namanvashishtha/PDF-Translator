@@ -181,11 +181,34 @@ export class PDFService {
         console.log(`Using Spanish (es) as fallback source language instead of ${sourceLanguage}`);
       }
       
-      // Special case for Spanish to English - use plain text translators first
+      // Special case for Spanish to English - use exact layout translator first
       // This is our most common translation case and needs special handling
       const isSpanishToEnglish = (actualSourceLang === "es" && targetLanguage === "en");
       if (isSpanishToEnglish) {
-        console.log('CRITICAL CASE: Spanish to English detected - using ultra-simple text-only translation');
+        console.log('CRITICAL CASE: Spanish to English detected - using exact layout translator');
+        
+        // EXACT LAYOUT METHOD - preserves exact text positions from original PDF
+        const exactLayoutScript = path.join(process.cwd(), 'scripts', 'exact_layout_translate.py');
+        const exactLayoutCommand = `${PYTHON_PATH} "${exactLayoutScript}" "${inputPdfPath}" "${outputPdfPath}" "${actualSourceLang}" "${targetLanguage}"`;
+        console.log(`Executing exact layout translator: ${exactLayoutCommand}`);
+        
+        try {
+          const startTime = Date.now();
+          await execAsync(exactLayoutCommand);
+          const duration = Date.now() - startTime;
+          console.log(`Exact layout translation completed in ${duration}ms`);
+          
+          // Check if output file exists and has content
+          if (fs.existsSync(outputPdfPath) && fs.statSync(outputPdfPath).size > 0) {
+            console.log(`Successfully translated PDF with exact layout method`);
+            return outputPdfPath;
+          }
+          
+          // If exact layout method failed, try text-only method
+          console.log('Exact layout translation failed or output file is empty, trying text-only method');
+        } catch (exactLayoutError) {
+          console.error('Exact layout translation failed, trying text-only method:', exactLayoutError);
+        }
         
         // TEXT-ONLY METHOD - absolute simplest approach with virtually no formatting
         const textOnlyScript = path.join(process.cwd(), 'scripts', 'text_only_translate.py');

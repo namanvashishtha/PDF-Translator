@@ -230,7 +230,7 @@ def needs_ocr(pdf_path):
         return True  # Default to using OCR if we can't determine
 
 def detect_language(pdf_path):
-    """Detect the language of a PDF document"""
+    """Detect the language of a PDF document using multiple methods for reliability"""
     try:
         pdf_basename = os.path.basename(pdf_path)
         print(f"Detecting language for PDF: {pdf_basename}")
@@ -248,73 +248,131 @@ def detect_language(pdf_path):
         if "german" in filename_lower or "deutsch" in filename_lower:
             print(f"FILENAME HINT: Detected German from filename: {pdf_basename}")
             return "de"
+            
+        if "italian" in filename_lower or "italiano" in filename_lower:
+            print(f"FILENAME HINT: Detected Italian from filename: {pdf_basename}")
+            return "it"
+            
+        if "english" in filename_lower:
+            print(f"FILENAME HINT: Detected English from filename: {pdf_basename}")
+            return "en"
         
-        # First extract some text from the PDF
-        with tempfile.NamedTemporaryFile(suffix='.txt', delete=False) as temp_file:
-            text_path = temp_file.name
+        # Create a temporary directory for our extraction files
+        temp_dir = tempfile.mkdtemp()
+        text_path = os.path.join(temp_dir, f"extract-{uuid.uuid4()}.txt")
+        ocr_text_path = os.path.join(temp_dir, f"ocr-extract-{uuid.uuid4()}.txt")
+        
+        # Extract text using both methods to ensure we get enough content for detection
+        direct_extraction_text = ""
+        ocr_extraction_text = ""
         
         # Try direct extraction first
-        if extract_text(pdf_path, text_path):
-            with open(text_path, 'r', encoding='utf-8') as file:
-                text = file.read()
-        else:
-            # If direct extraction fails, try OCR
-            with tempfile.NamedTemporaryFile(suffix='.txt', delete=False) as ocr_temp_file:
-                ocr_text_path = ocr_temp_file.name
-            
+        try:
+            if extract_text(pdf_path, text_path):
+                with open(text_path, 'r', encoding='utf-8', errors='ignore') as file:
+                    direct_extraction_text = file.read()
+                print(f"Direct extraction produced {len(direct_extraction_text)} characters")
+        except Exception as e:
+            print(f"Direct extraction failed: {e}")
+        
+        # Also try OCR extraction
+        try:
             extract_text_with_ocr(pdf_path, ocr_text_path)
-            with open(ocr_text_path, 'r', encoding='utf-8') as file:
-                text = file.read()
-            os.unlink(ocr_text_path)
+            with open(ocr_text_path, 'r', encoding='utf-8', errors='ignore') as file:
+                ocr_extraction_text = file.read()
+            print(f"OCR extraction produced {len(ocr_extraction_text)} characters")
+        except Exception as e:
+            print(f"OCR extraction failed: {e}")
         
-        # Clean up the temporary file
-        os.unlink(text_path)
+        # Use the text source with more content
+        if len(direct_extraction_text.strip()) > len(ocr_extraction_text.strip()):
+            text = direct_extraction_text
+            print("Using direct extraction text for language detection")
+        else:
+            text = ocr_extraction_text
+            print("Using OCR extraction text for language detection")
         
-        if text.strip():
-            # Detect language using langdetect
-            try:
-                # Get a sample of the text (up to 5000 chars) for faster detection
-                sample_text = text[:5000]
-                
-                # Analyze for Spanish indicators (key Spanish words)
-                spanish_indicators = ['la', 'el', 'en', 'por', 'con', 'para', 'una', 'que', 'es', 'y']
-                spanish_count = 0
-                for word in spanish_indicators:
+        # Clean up temporary files
+        try:
+            import shutil
+            shutil.rmtree(temp_dir)
+        except:
+            pass
+        
+        if not text.strip():
+            print("No text content found for language detection", file=sys.stderr)
+            return "auto"  # Use auto-detection if no text was extracted
+        
+        # Detect language using multiple methods for reliability
+        try:
+            # Get a sample of the text (up to 5000 chars) for faster detection
+            sample_text = text[:5000]
+            
+            # Dictionary of language indicators with their key words
+            language_indicators = {
+                'es': ['la', 'el', 'en', 'por', 'con', 'para', 'una', 'que', 'es', 'y', 'de', 'los', 'las', 'del'],
+                'fr': ['le', 'la', 'les', 'des', 'un', 'une', 'et', 'est', 'pour', 'dans', 'avec', 'ce', 'cette', 'ces'],
+                'de': ['der', 'die', 'das', 'und', 'ist', 'für', 'mit', 'ein', 'eine', 'zu', 'von', 'nicht', 'auch', 'dem'],
+                'it': ['il', 'la', 'i', 'le', 'un', 'una', 'e', 'è', 'per', 'con', 'che', 'di', 'non', 'sono'],
+                'en': ['the', 'and', 'is', 'in', 'to', 'of', 'a', 'for', 'that', 'with', 'as', 'at', 'this', 'by']
+            }
+            
+            # Count indicators for each language
+            language_scores = {}
+            for lang, indicators in language_indicators.items():
+                score = 0
+                for word in indicators:
                     # Count times each word appears as whole word with boundaries
-                    spanish_count += len(re.findall(r'\b' + word + r'\b', sample_text.lower()))
+                    count = len(re.findall(r'\b' + word + r'\b', sample_text.lower()))
+                    score += count
+                language_scores[lang] = score
+                print(f"Language indicator score for {lang}: {score}")
+            
+            # Get the language with the highest score
+            max_score = 0
+            detected_lang = "auto"
+            for lang, score in language_scores.items():
+                if score > max_score:
+                    max_score = score
+                    detected_lang = lang
+            
+            # Only use word-based detection if we have a significant score
+            if max_score > 15:
+                print(f"TEXT ANALYSIS: Detected {detected_lang} with score {max_score}")
                 
-                # If many Spanish words are found, override detection
-                if spanish_count > 10:
-                    print(f"TEXT ANALYSIS: Found {spanish_count} Spanish indicator words, likely Spanish")
+                # Special case: If Spanish and Catalan are close, prefer Spanish
+                if detected_lang == "es" and language_scores.get("ca", 0) > max_score * 0.8:
+                    print("OVERRIDE: Detected text has both Spanish and Catalan indicators, using Spanish")
                     return "es"
-                
-                # Perform normal detection
+                    
+                return detected_lang
+            
+            # If word-based detection didn't yield a clear result, try langdetect
+            print("Word-based detection inconclusive, trying langdetect")
+            try:
                 lang = langdetect.detect(sample_text)
-                print(f"Detected language: {lang}")
+                print(f"Langdetect detected: {lang}")
                 
                 # Apply rules to fix common detection errors
                 if lang == "ca":  # If detected as Catalan
                     print("OVERRIDE: Detected Catalan (ca), treating as Spanish (es) for better translation")
                     return "es"
-                    
-                # The fix for our issue: default to Spanish based on user feedback
-                # that Spanish PDFs are being detected as English
-                if lang == "en":
-                    # If detected as English, it might actually be Spanish
-                    # since English detection is the most problematic
-                    print("OVERRIDE: Detected as English, treating as Spanish (es) based on user feedback")
-                    return "es"
-                    
+                
                 return lang
             except Exception as e:
-                print(f"Language detection failed: {e}", file=sys.stderr)
-                return "es"  # Default to Spanish if detection fails
-        else:
-            print("No text content found for language detection", file=sys.stderr)
-            return "es"  # Default to Spanish if no text was extracted
+                print(f"Langdetect failed: {e}")
+                
+            # If all detection methods fail, return auto
+            return "auto"
+            
+        except Exception as e:
+            print(f"Language detection failed: {e}", file=sys.stderr)
+            return "auto"  # Use auto-detection if detection fails
     except Exception as e:
-        print(f"Error detecting language: {e}", file=sys.stderr)
-        return "es"  # Default to Spanish on error
+        print(f"Error in language detection process: {e}", file=sys.stderr)
+        import traceback
+        traceback.print_exc()
+        return "auto"  # Use auto-detection on error
 
 def format_language_code(code):
     """Format language code properly for Google Translator API"""
@@ -642,23 +700,66 @@ def translate_pdf_with_images(input_pdf_path, output_pdf_path, source_lang, targ
         test_text = "This is a test translation."
         if source_code == "ca":  # Sample text in Catalan
             test_text = "Aquesta és una prova de traducció."
+        elif source_code == "es":  # Sample text in Spanish
+            test_text = "Esta es una prueba de traducción."
+        elif source_code == "fr":  # Sample text in French
+            test_text = "Ceci est un test de traduction."
+        elif source_code == "de":  # Sample text in German
+            test_text = "Dies ist ein Übersetzungstest."
+        
         try:
             print(f"Testing translation config with sample: '{test_text}'")
             test_translator = GoogleTranslator(source=source_code, target=target_code)
             test_result = test_translator.translate(test_text)
             print(f"Translation test result: '{test_result}'")
+            
+            # If test translation returns the same text, try with auto detection
+            if test_result == test_text:
+                print("WARNING: Test translation returned same text. Trying with auto detection...")
+                test_translator = GoogleTranslator(source='auto', target=target_code)
+                test_result = test_translator.translate(test_text)
+                print(f"Auto-detection test result: '{test_result}'")
+                
+                # If auto detection works, use it for the actual translation
+                if test_result != test_text:
+                    print("Auto-detection worked better. Using 'auto' as source language.")
+                    source_code = 'auto'
         except Exception as test_error:
             print(f"WARNING: Test translation failed: {test_error}")
         
         # IMPROVED METHOD: First extract and translate all text
         print(f"Extracting and translating text from PDF...")
         
-        # Extract text to a temporary file
-        temp_text_path = f"/tmp/extract-for-translation-{uuid.uuid4()}.txt"
-        extract_text(input_pdf_path, temp_text_path)
+        # Create a temporary directory for our files
+        temp_dir = tempfile.mkdtemp()
+        temp_text_path = os.path.join(temp_dir, f"extract-for-translation-{uuid.uuid4()}.txt")
         
-        with open(temp_text_path, 'r', encoding='utf-8') as f:
-            text_content = f.read()
+        # Extract text using both methods to ensure we get all content
+        try:
+            extract_text(input_pdf_path, temp_text_path)
+            
+            # Check if we got enough text, if not try OCR
+            with open(temp_text_path, 'r', encoding='utf-8', errors='ignore') as f:
+                text_content = f.read()
+                
+            if len(text_content.strip()) < 100:  # If very little text was extracted
+                print("WARNING: Very little text extracted. Trying OCR extraction...")
+                ocr_text_path = os.path.join(temp_dir, f"ocr-extract-{uuid.uuid4()}.txt")
+                extract_text_with_ocr(input_pdf_path, ocr_text_path)
+                
+                # Combine both extraction methods
+                with open(ocr_text_path, 'r', encoding='utf-8', errors='ignore') as f:
+                    ocr_text = f.read()
+                    
+                if len(ocr_text.strip()) > len(text_content.strip()):
+                    print("OCR extraction produced more text. Using OCR results.")
+                    text_content = ocr_text
+        except Exception as extract_error:
+            print(f"WARNING: Text extraction error: {extract_error}")
+            # Create empty file if extraction fails
+            with open(temp_text_path, 'w', encoding='utf-8') as f:
+                f.write("")
+            text_content = ""
         
         # Translate the extracted text
         print(f"Translating extracted text...")
@@ -695,9 +796,40 @@ def translate_pdf_with_images(input_pdf_path, output_pdf_path, source_lang, targ
             if images:
                 print(f"Found {len(images)} images on page {page_idx+1}")
                 
-            # Extract text blocks from the page
-            text_blocks = page.get_text("blocks")
-            print(f"Found {len(text_blocks)} text blocks on page {page_idx+1}")
+            # Extract text blocks from the page - try different extraction methods
+            try:
+                # First try blocks extraction
+                text_blocks = page.get_text("blocks")
+                print(f"Found {len(text_blocks)} text blocks on page {page_idx+1}")
+                
+                # If no blocks found, try dict extraction
+                if len(text_blocks) == 0:
+                    print("No blocks found, trying dict extraction...")
+                    dict_text = page.get_text("dict")
+                    if "blocks" in dict_text:
+                        dict_blocks = dict_text["blocks"]
+                        print(f"Found {len(dict_blocks)} blocks using dict extraction")
+                        
+                        # Convert dict blocks to the format expected by the block processing code
+                        text_blocks = []
+                        for block in dict_blocks:
+                            if block.get("type") == 0:  # text block
+                                text = ""
+                                for line in block.get("lines", []):
+                                    for span in line.get("spans", []):
+                                        text += span.get("text", "")
+                                    text += "\n"
+                                
+                                if text.strip():
+                                    # Create a block in the format [x0, y0, x1, y1, text, block_no, block_type]
+                                    text_blocks.append([
+                                        block["bbox"][0], block["bbox"][1], 
+                                        block["bbox"][2], block["bbox"][3],
+                                        text, len(text_blocks), 0
+                                    ])
+            except Exception as block_error:
+                print(f"Error extracting text blocks: {block_error}")
+                text_blocks = []
             
             # STEP 2: Process each text block
             for block_idx, block in enumerate(text_blocks):
@@ -713,32 +845,77 @@ def translate_pdf_with_images(input_pdf_path, output_pdf_path, source_lang, targ
                     try:
                         # Get or create the translation for this text block
                         if text not in translation_mapping:
-                            translated = translator.translate(text)
+                            try:
+                                translated = translator.translate(text)
+                                # If translation fails or returns empty, try with auto detection
+                                if not translated or translated.strip() == text.strip():
+                                    auto_translator = GoogleTranslator(source='auto', target=target_code)
+                                    auto_translated = auto_translator.translate(text)
+                                    if auto_translated and auto_translated.strip() != text.strip():
+                                        translated = auto_translated
+                                        print(f"Auto-detection worked better for block {block_idx}")
+                            except Exception as translate_error:
+                                print(f"Translation error for block {block_idx}: {translate_error}")
+                                # Try with auto detection as fallback
+                                try:
+                                    auto_translator = GoogleTranslator(source='auto', target=target_code)
+                                    translated = auto_translator.translate(text)
+                                except:
+                                    # If all translation attempts fail, use original text
+                                    translated = text
+                            
                             translation_mapping[text] = translated
                             print(f"Block {block_idx} translated: '{text[:30]}...' → '{translated[:30]}...'")
                         else:
                             translated = translation_mapping[text]
                         
                         # Create a white rectangle to cover the original text
-                        # Adjustable opacity for better readability (0.95 is nearly opaque)
-                        new_page.draw_rect(rect, color=(1, 1, 1), fill=(1, 1, 1), opacity=0.95)
+                        # Use higher opacity for better readability (0.98 is almost completely opaque)
+                        new_page.draw_rect(rect, color=(1, 1, 1), fill=(1, 1, 1), opacity=0.98)
                         
-                        # Insert the translated text - using a smaller font to fit longer translations
-                        fontsize = 10  # Slightly smaller than original to accommodate expanded text
+                        # Calculate appropriate font size based on original text and translation length
+                        # Translations often need more space, so adjust font size accordingly
+                        original_len = len(text.strip())
+                        translated_len = len(translated.strip())
+                        
+                        # Base font size on text length ratio and available space
+                        ratio = min(1.0, original_len / max(1, translated_len))
+                        fontsize = max(8, 11 * ratio)  # Minimum 8pt, maximum 11pt
                         
                         # Use a bold font for headings (heuristic based on block position and text length)
                         is_heading = rect.y0 < 100 or len(text.strip()) < 50
                         fontname = "helv-b" if is_heading else "helv"
                         
                         # Insert the translated text with word wrapping
-                        new_page.insert_textbox(
-                            rect,
+                        # Expand the rectangle slightly to accommodate longer translations
+                        expanded_rect = fitz.Rect(
+                            rect.x0,
+                            rect.y0,
+                            rect.x1 + 20,  # Add extra width
+                            rect.y1 + 5    # Add extra height
+                        )
+                        
+                        # Insert the translated text with word wrapping
+                        text_inserted = new_page.insert_textbox(
+                            expanded_rect,
                             translated,
                             fontsize=fontsize,
                             fontname=fontname,
                             color=(0, 0, 0),
                             align=0
                         )
+                        
+                        # If text didn't fit, try with a smaller font
+                        if text_inserted < 0:
+                            print(f"Text didn't fit in block {block_idx}, trying smaller font")
+                            new_page.insert_textbox(
+                                expanded_rect,
+                                translated,
+                                fontsize=max(6, fontsize * 0.8),  # Reduce font size by 20%, minimum 6pt
+                                fontname=fontname,
+                                color=(0, 0, 0),
+                                align=0
+                            )
                     except Exception as e:
                         print(f"Error translating text block {block_idx}: {e}")
                         # If translation fails, leave the original text visible
@@ -751,9 +928,10 @@ def translate_pdf_with_images(input_pdf_path, output_pdf_path, source_lang, targ
         output_document.close()
         pdf_document.close()
         
-        # Clean up temp file
-        if os.path.exists(temp_text_path):
-            os.remove(temp_text_path)
+        # Clean up temp files
+        import shutil
+        if os.path.exists(temp_dir):
+            shutil.rmtree(temp_dir)
         
         print(f"PDF translated successfully to {output_pdf_path}")
         return True

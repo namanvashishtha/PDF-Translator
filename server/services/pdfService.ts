@@ -165,27 +165,50 @@ export class PDFService {
       
       const outputPdfPath = this.tempFileManager.createTempFile('translated-with-images', '.pdf');
 
-      // OVERRIDE SOURCE LANGUAGE - Force to work with common languages
-      // This is a critical fix to address the language detection issues
-      let actualSourceLang = "es";  // Spanish default
-      if (sourceLanguage === "ca" || sourceLanguage === "es") {
-        actualSourceLang = "es";
-        console.log(`Using Spanish (es) as source language instead of ${sourceLanguage}`);
-      } else if (sourceLanguage === "fr") {
-        actualSourceLang = "fr";
-      } else if (sourceLanguage === "de") {
-        actualSourceLang = "de";
-      } else if (sourceLanguage === "it") {
-        actualSourceLang = "it";
-      } else {
-        console.log(`Using Spanish (es) as fallback source language instead of ${sourceLanguage}`);
-      }
+      // KILO CODE: Commented out problematic language override to use detected language
+      // // OVERRIDE SOURCE LANGUAGE - Force to work with common languages
+      // // This is a critical fix to address the language detection issues
+      // let actualSourceLang = "es";  // Spanish default
+      // if (sourceLanguage === "ca" || sourceLanguage === "es") {
+      //   actualSourceLang = "es";
+      //   console.log(`Using Spanish (es) as source language instead of ${sourceLanguage}`);
+      // } else if (sourceLanguage === "fr") {
+      //   actualSourceLang = "fr";
+      // } else if (sourceLanguage === "de") {
+      //   actualSourceLang = "de";
+      // } else if (sourceLanguage === "it") {
+      //   actualSourceLang = "it";
+      // } else {
+      //   console.log(`Using Spanish (es) as fallback source language instead of ${sourceLanguage}`);
+      // }
+      let actualSourceLang = sourceLanguage; // KILO CODE: Use the passed sourceLanguage
+      console.log(`Using source language: ${actualSourceLang}`);
       
       // Special case for Spanish to English - use exact layout translator first
       // This is our most common translation case and needs special handling
       const isSpanishToEnglish = (actualSourceLang === "es" && targetLanguage === "en");
+
+      // KILO CODE: Prioritize pdf_processor.py's translate_pdf for all cases first,
+      // as it has better image handling.
+      console.log('Attempting translation with main pdf_processor.py (translate_pdf action)...');
+      const mainTranslateCommand = `${PYTHON_PATH} "${this.pythonScriptPath}" translate_pdf "${inputPdfPath}" "${outputPdfPath}" "${actualSourceLang}" "${targetLanguage}"`;
+      console.log(`Executing: ${mainTranslateCommand}`);
+      try {
+        const startTime = Date.now();
+        await execAsync(mainTranslateCommand);
+        const duration = Date.now() - startTime;
+        console.log(`Main PDF translation (translate_pdf) completed in ${duration}ms`);
+        if (fs.existsSync(outputPdfPath) && fs.statSync(outputPdfPath).size > 0) {
+          console.log(`Successfully translated PDF with main pdf_processor.py`);
+          return outputPdfPath;
+        }
+        console.log('Main pdf_processor.py translation failed or output file is empty, proceeding to fallbacks...');
+      } catch (mainTranslateError) {
+        console.error('Main pdf_processor.py translation (translate_pdf) failed, proceeding to fallbacks:', mainTranslateError);
+      }
+
       if (isSpanishToEnglish) {
-        console.log('CRITICAL CASE: Spanish to English detected - using exact layout translator');
+        console.log('CRITICAL CASE: Spanish to English detected - trying specific fallbacks...');
         
         // EXACT LAYOUT METHOD - preserves exact text positions from original PDF
         const exactLayoutScript = path.join(process.cwd(), 'scripts', 'exact_layout_translate.py');
@@ -198,116 +221,92 @@ export class PDFService {
           const duration = Date.now() - startTime;
           console.log(`Exact layout translation completed in ${duration}ms`);
           
-          // Check if output file exists and has content
           if (fs.existsSync(outputPdfPath) && fs.statSync(outputPdfPath).size > 0) {
             console.log(`Successfully translated PDF with exact layout method`);
             return outputPdfPath;
           }
-          
-          // If exact layout method failed, try text-only method
           console.log('Exact layout translation failed or output file is empty, trying text-only method');
         } catch (exactLayoutError) {
           console.error('Exact layout translation failed, trying text-only method:', exactLayoutError);
         }
         
-        // TEXT-ONLY METHOD - absolute simplest approach with virtually no formatting
+        // TEXT-ONLY METHOD
         const textOnlyScript = path.join(process.cwd(), 'scripts', 'text_only_translate.py');
         const textOnlyCommand = `${PYTHON_PATH} "${textOnlyScript}" "${inputPdfPath}" "${outputPdfPath}" "${actualSourceLang}" "${targetLanguage}"`;
         console.log(`Executing text-only translator: ${textOnlyCommand}`);
-        
         try {
           const startTime = Date.now();
           await execAsync(textOnlyCommand);
           const duration = Date.now() - startTime;
           console.log(`Text-only translation completed in ${duration}ms`);
-          
-          // Check if output file exists and has content
           if (fs.existsSync(outputPdfPath) && fs.statSync(outputPdfPath).size > 0) {
             console.log(`Successfully translated PDF with text-only method`);
             return outputPdfPath;
           }
-          
-          // If text-only method failed, try pure text method
           console.log('Text-only translation failed or output file is empty, trying pure text method');
         } catch (textOnlyError) {
           console.error('Text-only translation failed, trying pure text method:', textOnlyError);
         }
         
-        // PURE TEXT METHOD - creates a simple text-only PDF with slightly better formatting
+        // PURE TEXT METHOD
         const pureTextScript = path.join(process.cwd(), 'scripts', 'pure_text_translate.py');
         const pureTextCommand = `${PYTHON_PATH} "${pureTextScript}" "${inputPdfPath}" "${outputPdfPath}" "${actualSourceLang}" "${targetLanguage}"`;
         console.log(`Executing pure text Spanish-English translator: ${pureTextCommand}`);
-        
         try {
           const startTime = Date.now();
           await execAsync(pureTextCommand);
           const duration = Date.now() - startTime;
           console.log(`Pure text Spanish-English translation completed in ${duration}ms`);
-          
-          // Check if output file exists and has content
           if (fs.existsSync(outputPdfPath) && fs.statSync(outputPdfPath).size > 0) {
             console.log(`Successfully translated PDF with pure text method`);
             return outputPdfPath;
           }
-          
-          // If pure text method failed, try extreme method
           console.log('Pure text translation failed or output file is empty, trying extreme method');
         } catch (pureTextError) {
           console.error('Pure text translation failed, trying extreme method:', pureTextError);
         }
         
-        // EXTREME METHOD - completely rebuilds the PDF with optimal readability
+        // EXTREME METHOD
         const extremeScript = path.join(process.cwd(), 'scripts', 'extreme_translate.py');
         const extremeCommand = `${PYTHON_PATH} "${extremeScript}" "${inputPdfPath}" "${outputPdfPath}" "${actualSourceLang}" "${targetLanguage}"`;
         console.log(`Executing extreme Spanish-English translator: ${extremeCommand}`);
-        
         try {
           const startTime = Date.now();
           await execAsync(extremeCommand);
           const duration = Date.now() - startTime;
           console.log(`Extreme Spanish-English translation completed in ${duration}ms`);
-          
-          // Check if output file exists and has content
           if (fs.existsSync(outputPdfPath) && fs.statSync(outputPdfPath).size > 0) {
             console.log(`Successfully translated PDF with extreme method`);
             return outputPdfPath;
           }
-          
-          // If extreme method failed, try aggressive method
           console.log('Extreme translation failed or output file is empty, trying aggressive method');
         } catch (extremeError) {
           console.error('Extreme translation failed, trying aggressive method:', extremeError);
         }
         
-        // Try aggressive method next for Spanish to English
-        console.log('Trying aggressive translation method');
+        // AGGRESSIVE METHOD
         const aggressiveScript = path.join(process.cwd(), 'scripts', 'aggressive_translate.py');
         const aggressiveCommand = `${PYTHON_PATH} "${aggressiveScript}" "${inputPdfPath}" "${outputPdfPath}" "${actualSourceLang}" "${targetLanguage}"`;
         console.log(`Executing aggressive Spanish-English translator: ${aggressiveCommand}`);
-        
         try {
           const startTime = Date.now();
           await execAsync(aggressiveCommand);
           const duration = Date.now() - startTime;
           console.log(`Aggressive Spanish-English translation completed in ${duration}ms`);
-          
-          // Check if output file exists and has content
           if (fs.existsSync(outputPdfPath) && fs.statSync(outputPdfPath).size > 0) {
             console.log(`Successfully translated PDF with aggressive method`);
             return outputPdfPath;
           }
-          
-          // If aggressive method failed, we'll continue with other methods
-          console.log('Aggressive translation failed or output file is empty, trying guaranteed method');
+          console.log('Aggressive translation failed or output file is empty, trying guaranteed method as final Spanish-English fallback.');
         } catch (aggressiveError) {
-          console.error('Aggressive translation failed, trying guaranteed method:', aggressiveError);
+          console.error('Aggressive translation failed, trying guaranteed method as final Spanish-English fallback:', aggressiveError);
         }
       }
       
-      // IMPORTANT: Use the guaranteed translation method for all other cases
+      // Fallback for non-Spanish-to-English OR if all Spanish-to-English attempts failed
+      // GUARANTEED METHOD
       const guaranteedScript = path.join(process.cwd(), 'scripts', 'guaranteed_translate.py');
-      
-      console.log('Using guaranteed translation method');
+      console.log('Using guaranteed translation method (either as primary for non-Sp->En or fallback for Sp->En)');
       const guaranteedCommand = `${PYTHON_PATH} "${guaranteedScript}" "${inputPdfPath}" "${outputPdfPath}" "${actualSourceLang}" "${targetLanguage}"`;
       console.log(`Executing guaranteed translate command: ${guaranteedCommand}`);
       
@@ -370,27 +369,21 @@ export class PDFService {
           console.log(`Successfully translated PDF with force method`);
           return outputPdfPath;
         } else {
-          console.log('Force translation failed or output file is empty, falling back to original method');
+          // KILO CODE: Throw error if force translation didn't produce a valid file
+          const errorMessage = 'Force translation method failed to produce a valid output file.';
+          console.error(errorMessage);
+          throw new Error(errorMessage);
         }
       } catch (forceError) {
-        console.error('Force translation failed, falling back to original method:', forceError);
+        // KILO CODE: Log and re-throw a specific error
+        const errorMessage = `Force translation method failed: ${(forceError as Error).message}`;
+        console.error(errorMessage, forceError);
+        throw new Error(errorMessage);
       }
       
-      // METHOD 4: Fallback to original method if all other methods fail
-      console.log('Falling back to original translation method');
-      const command = `${PYTHON_PATH} "${this.pythonScriptPath}" translate_pdf "${inputPdfPath}" "${outputPdfPath}" "${actualSourceLang}" "${targetLanguage}"`;
-      console.log(`Executing: ${command}`);
-      
-      const startTime = Date.now();
-      await execAsync(command);
-      const duration = Date.now() - startTime;
-      console.log(`PDF translation with image preservation completed in ${duration}ms`);
-      
-      if (!fs.existsSync(outputPdfPath)) {
-        throw new Error('Failed to translate PDF with image preservation');
-      }
-      
-      return outputPdfPath;
+      // This entire block from the previous diff was redundant and caused redeclaration errors.
+      // The logic for directTranslateScript and forceTranslateScript is already present above (lines 330-376)
+      // and should be the final fallbacks.
     } catch (error) {
       console.error('Error translating PDF with image preservation:', error);
       throw new Error(`Failed to translate PDF with image preservation: ${error}`);

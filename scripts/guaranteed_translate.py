@@ -26,28 +26,64 @@ def translate_text_directly(text, source_lang, target_lang):
     if source_lang == target_lang:
         return text
     
-    # For Spanish to English, which is most important case, 
-    # we will be super aggressive about making sure it works
+    # For Spanish to English, which is most important case
     IS_SPANISH_TO_ENGLISH = (source_lang.lower() == "es" and target_lang.lower() == "en")
     if IS_SPANISH_TO_ENGLISH:
         print(f"CRITICAL TRANSLATION: Spanish to English for text: '{text[:50]}...'")
     
-    # Special case: Almost always use Spanish as source if translating to English
-    # This is a workaround for the common case where Spanish documents are being detected wrong
+    # Use the provided source language but with fallbacks if needed
     actual_source = source_lang
-    if target_lang == "en" and (source_lang == "auto" or source_lang == "en" or source_lang == "ca"):
-        actual_source = "es"
-        print(f"OVERRIDE: Using Spanish (es) instead of {source_lang} when translating to English")
-        
-    # Translation function with retries
+    
+    # Only override if source is auto, don't force Spanish for everything
+    if source_lang == "auto" or source_lang == "ca":
+        # Try to detect the language from the text itself
+        try:
+            import langdetect
+            detected = langdetect.detect(text[:1000])
+            print(f"Auto-detected language: {detected}")
+            actual_source = detected
+        except Exception as e:
+            print(f"Language detection failed: {e}")
+            # Keep the original source language
+            
+    print(f"Using source language: {actual_source} for translation to {target_lang}")
+    
+    # Translation function with retries and improved handling
     def attempt_translation(src_lang, tgt_lang, retry_count=0):
         try:
             # Create translator with source and target languages
             translator = GoogleTranslator(source=src_lang, target=tgt_lang)
             
-            # Translate text with specific timeout
-            translated = translator.translate(text)
-            return translated
+            # For longer texts, split into chunks to improve reliability
+            if len(text) > 1000:
+                # Split text into sentences or chunks
+                chunks = []
+                current_chunk = ""
+                
+                # Simple sentence splitting (not perfect but helps)
+                for sentence in text.replace('. ', '.|').replace('! ', '!|').replace('? ', '?|').split('|'):
+                    if len(current_chunk) + len(sentence) < 1000:
+                        current_chunk += sentence + (' ' if not sentence.endswith(('.', '!', '?')) else '')
+                    else:
+                        if current_chunk:
+                            chunks.append(current_chunk)
+                        current_chunk = sentence + (' ' if not sentence.endswith(('.', '!', '?')) else '')
+                
+                if current_chunk:
+                    chunks.append(current_chunk)
+                
+                # Translate each chunk
+                translated_chunks = []
+                for chunk in chunks:
+                    chunk_translated = translator.translate(chunk)
+                    translated_chunks.append(chunk_translated)
+                
+                # Join the translated chunks
+                return ' '.join(translated_chunks)
+            else:
+                # For shorter texts, translate directly
+                translated = translator.translate(text)
+                return translated
         except Exception as e:
             print(f"Translation error (attempt {retry_count}): {e}")
             if retry_count < 3:  # Maximum 3 retries
@@ -105,10 +141,9 @@ def guaranteed_translate_pdf(input_path, output_path, source_lang, target_lang):
         return True
         
     # Check if this is Spanish to English - the most common translation
-    # For this case, we'll be more aggressive about ensuring translated text is visible
     IS_SPANISH_TO_ENGLISH = (source_lang.lower() == "es" and target_lang.lower() == "en")
     if IS_SPANISH_TO_ENGLISH:
-        print("CRITICAL CASE: Spanish to English translation - using high visibility mode")
+        print("CRITICAL CASE: Spanish to English translation")
     else:
         print(f"Normal translation mode for {source_lang} to {target_lang}")
 
@@ -141,9 +176,6 @@ def guaranteed_translate_pdf(input_path, output_path, source_lang, target_lang):
         # Open source document
         doc = fitz.open(input_path)
         
-        # Create a new document
-        new_doc = fitz.open()
-        
         # Initialize counters for overall statistics
         total_processed_spans = 0
         total_translated_spans = 0
@@ -154,17 +186,6 @@ def guaranteed_translate_pdf(input_path, output_path, source_lang, target_lang):
             
             # Get the original page
             page = doc[page_num]
-            
-            # Create a new page with the same dimensions
-            new_page = new_doc.new_page(width=page.rect.width, height=page.rect.height)
-            
-            # First add all images and drawings (non-text content)
-            # Copy the entire visual appearance of the page
-            new_page.show_pdf_page(
-                new_page.rect,  # where to place the image
-                doc,            # source document
-                page_num,       # source page number
-            )
             
             # Extract text blocks
             try:
@@ -178,7 +199,10 @@ def guaranteed_translate_pdf(input_path, output_path, source_lang, target_lang):
             processed_spans = 0
             translated_spans = 0
             
-            # Translate and add text
+            # Create a list to store text replacements
+            replacements = []
+            
+            # First pass: collect all text replacements
             for block in blocks:
                 if block.get("type") == 0:  # text block
                     for line in block.get("lines", []):
@@ -192,16 +216,10 @@ def guaranteed_translate_pdf(input_path, output_path, source_lang, target_lang):
                                 continue
                                 
                             try:
-                                # Get position and font information
-                                origin = (span["origin"][0], span["origin"][1])
-                                font_size = span["size"]
-                                font_name = span["font"]
-                                color = span["color"]
-                                
                                 # Translate text
                                 translated = translate_text_directly(text, source_lang, target_lang)
                                 
-                                # Skip if translation failed
+                                # Skip if translation failed or is identical
                                 if not translated or translated.isspace():
                                     continue
                                     
@@ -209,89 +227,97 @@ def guaranteed_translate_pdf(input_path, output_path, source_lang, target_lang):
                                 if text.lower() != translated.lower():
                                     translated_spans += 1
                                     total_translated_spans += 1
-                                
-                                # CRITICAL FIX: Change text visibility approach
-                                # Instead of trying to cover text with white rectangles
-                                # which might interfere with background images, use a different approach
-                                
-                                # Make text stand out with a semi-transparent background
-                                rect = fitz.Rect(
-                                    span["bbox"][0] - 2,  # x0
-                                    span["bbox"][1] - 2,  # y0 
-                                    span["bbox"][2] + 20,  # x1 - extra space for translated text
-                                    span["bbox"][3] + 2   # y1
-                                )
-                                
-                                # Use a much more aggressive text replacement approach
-                                # Create a more noticeable text box with solid white background
-                                larger_rect = fitz.Rect(
-                                    span["bbox"][0] - 3,    # x0 (expand leftward)
-                                    span["bbox"][1] - 3,    # y0 (expand upward)
-                                    span["bbox"][2] + 30,   # x1 (ensure plenty of space for translated text)
-                                    span["bbox"][3] + 3     # y1 (expand downward)
-                                )
-                                
-                                # ALWAYS use the aggressive approach for all translations
-                                # First make the original text area completely white (solid background)
-                                new_page.draw_rect(larger_rect, color=(1, 1, 1), fill=(1, 1, 1))
-                                
-                                # Apply a very thin black border to make the text area stand out
-                                new_page.draw_rect(larger_rect, color=(0, 0, 0), width=0.1)
-                                
-                                # Insert text with much higher contrast and larger font
-                                # Place text in the center of the white rectangle
-                                text_x = origin[0]
-                                text_y = origin[1]
-                                
-                                # Apply an even more aggressive approach for Spanish to English
-                                if IS_SPANISH_TO_ENGLISH:
-                                    # Double the font size for Spanish to English
-                                    render_size = max(font_size * 1.5, 10)
                                     
-                                    # Insert bold-style text (multiple overlapping renders)
-                                    # This creates a more visible effect that stands out clearly
-                                    new_page.insert_text(
-                                        (text_x, text_y), 
-                                        translated, 
-                                        fontsize=render_size,
-                                        fontname=font_name,
-                                        color=(0, 0, 0)  # Pure black for maximum contrast
-                                    )
-                                    # Create fake bold effect with multiple slight offsets
-                                    offsets = [0.2, 0.4, 0.6]
-                                    for offset in offsets:
-                                        new_page.insert_text(
-                                            (text_x + offset, text_y), 
-                                            translated, 
-                                            fontsize=render_size,
-                                            fontname=font_name,
-                                            color=(0, 0, 0)
-                                        )
-                                else:
-                                    # Standard approach for other language pairs, but still with 
-                                    # better visibility than before
-                                    render_size = max(font_size * 1.2, 9)
+                                    # Store the replacement info
+                                    replacements.append({
+                                        "bbox": span["bbox"],
+                                        "text": text,
+                                        "translated": translated,
+                                        "font_size": span["size"],
+                                        "font_name": span["font"],
+                                        "color": span["color"],
+                                        "origin": span["origin"]
+                                    })
                                     
-                                    # Insert text with good visibility
-                                    new_page.insert_text(
-                                        (text_x, text_y), 
-                                        translated, 
-                                        fontsize=render_size,
-                                        fontname=font_name,
-                                        color=(0, 0, 0)  # Force black color for best contrast
-                                    )
-                                
                                 # Log sample translations (not every one to reduce noise)
                                 if processed_spans % 10 == 0 and len(text) > 5:
                                     print(f"  Translated ({processed_spans}): '{text[:30]}...' → '{translated[:30]}...'")
                             except Exception as e:
                                 print(f"  Error translating text block: {e}")
             
+            # Second pass: apply all replacements to the page
+            # This approach preserves the original page structure and only modifies the text
+            for replacement in replacements:
+                try:
+                    # Get the original text position
+                    text_x = replacement["origin"][0]
+                    text_y = replacement["origin"][1]
+                    
+                    # Get the original font properties
+                    font_size = replacement["font_size"]
+                    font_name = replacement["font_name"]
+                    color = replacement["color"]
+                    
+                    # Create a redaction for the original text area (slightly expanded)
+                    rect = fitz.Rect(
+                        replacement["bbox"][0] - 1,  # x0
+                        replacement["bbox"][1] - 1,  # y0 
+                        replacement["bbox"][2] + 1,  # x1
+                        replacement["bbox"][3] + 1   # y1
+                    )
+                    
+                    # Add redaction annotation
+                    annot = page.add_redact_annot(rect, fill=(1, 1, 1))
+                    
+                    # Apply the redaction
+                    page.apply_redactions()
+                    
+                    # Now insert the translated text
+                    # Try to use the original font first
+                    try:
+                        # Get all fonts available in the document
+                        page_fonts = [f[4] for f in doc.get_page_fonts(page_num)]
+                        
+                        # Check if the original font exists in the document
+                        if font_name in page_fonts:
+                            use_font = font_name  # Use original font
+                        else:
+                            # Try to find a similar font in the document
+                            font_base = font_name.split('-')[0].lower()
+                            similar_fonts = [f for f in page_fonts if font_base in f.lower()]
+                            
+                            if similar_fonts:
+                                use_font = similar_fonts[0]  # Use a similar font
+                            else:
+                                use_font = "helv"  # Default to Helvetica
+                        
+                        # Insert translated text at the exact same position with same font properties
+                        page.insert_text(
+                            (text_x, text_y), 
+                            replacement["translated"], 
+                            fontsize=font_size,  # Keep original size
+                            fontname=use_font,
+                            color=color  # Use the original text color
+                        )
+                    except Exception as font_error:
+                        # Fallback to a guaranteed working approach if there's any font issue
+                        print(f"Font error: {font_error}, using fallback font")
+                        
+                        # Use a standard built-in font that's guaranteed to work
+                        page.insert_text(
+                            (text_x, text_y), 
+                            replacement["translated"], 
+                            fontsize=font_size,  # Keep original size
+                            fontname="helv",     # Helvetica is always available
+                            color=color          # Keep original color
+                        )
+                except Exception as e:
+                    print(f"  Error applying replacement: {e}")
+            
             print(f"Processed {processed_spans} text spans, translated {translated_spans} on page {page_num+1}")
         
         # Save the result
-        new_doc.save(output_path)
-        new_doc.close()
+        doc.save(output_path)
         doc.close()
         
         print(f"Guaranteed translation saved to: {output_path}")

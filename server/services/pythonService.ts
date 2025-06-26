@@ -1,7 +1,8 @@
-import { exec } from 'child_process';
+import { exec, spawn } from 'child_process';
 import util from 'util';
 import fs from 'fs';
 import path from 'path';
+import crypto from 'crypto';
 import { TempFileManager } from '../utils/tempFileManager';
 
 const execAsync = util.promisify(exec);
@@ -11,10 +12,16 @@ const PYTHON_PATH = 'python';
 export class PythonService {
   private tempFileManager: TempFileManager;
   private pythonScriptPath: string;
+  private robustPdfTranslatorPath: string;
+  private simplePdfTranslatorPath: string;
+  private translationCache: Map<string, string>;
 
   constructor() {
     this.tempFileManager = new TempFileManager();
     this.pythonScriptPath = path.resolve(process.cwd(), 'scripts/pdf_processor.py');
+    this.robustPdfTranslatorPath = path.resolve(process.cwd(), 'scripts/robust_pdf_translator.py');
+    this.simplePdfTranslatorPath = path.resolve(process.cwd(), 'scripts/simple_pdf_translator.py');
+    this.translationCache = new Map<string, string>();
   }
 
   /**
@@ -31,33 +38,58 @@ export class PythonService {
       }
       
       const detectedLanguage = stdout.trim();
-      console.log(`Detected language (original): ${detectedLanguage || 'en (default)'}`);
+      console.log(`Detected language (original): ${detectedLanguage || 'auto'}`);
       
-      // OVERRIDE: Force reliable language detection
-      // This fixes the core issue with detection
-      // We can analyze filename and content to make a better guess
-      let language = detectedLanguage || 'en';
+      // Improved language detection with filename hints
+      let language = detectedLanguage || 'auto';
+      const filenameLower = pdfPath.toLowerCase();
       
-      // Look for Spanish indicators
-      const isLikelySpanish = pdfPath.toLowerCase().includes('spanish') || 
-                             pdfPath.toLowerCase().includes('español') ||
-                             pdfPath.toLowerCase().includes('espanol');
+      // Check for language indicators in filename
+      const languageIndicators: Record<string, string[]> = {
+        'es': ['spanish', 'español', 'espanol'],
+        'de': ['german', 'deutsch'],
+        'fr': ['french', 'français', 'francais'],
+        'it': ['italian', 'italiano'],
+        'pt': ['portuguese', 'português', 'portugues'],
+        'ja': ['japanese', '日本語'],
+        'zh': ['chinese', '中文'],
+        'ru': ['russian', 'русский'],
+        'ar': ['arabic', 'العربية'],
+        'hi': ['hindi', 'हिंदी'],
+        'ko': ['korean', '한국어'],
+        'nl': ['dutch', 'nederlands'],
+        'pl': ['polish', 'polski'],
+        'tr': ['turkish', 'türkçe'],
+        'sv': ['swedish', 'svenska'],
+        'en': ['english']
+      };
       
-      if (isLikelySpanish || language === 'ca' || language === 'es') {
+      // Check if filename contains language indicators
+      for (const [langCode, indicators] of Object.entries(languageIndicators)) {
+        if (indicators.some(indicator => filenameLower.includes(indicator))) {
+          language = langCode;
+          console.log(`FILENAME HINT: Detected ${langCode} from filename: ${pdfPath}`);
+          break;
+        }
+      }
+      
+      // Handle special cases
+      if (language === 'ca') {
+        // Catalan is often confused with Spanish
         language = 'es';
-        console.log(`OVERRIDE: Detected as Spanish (es) instead of ${detectedLanguage}`);
-      } else if (language === 'en' || language === 'auto' || !language) {
-        // If detected as English but we want to force translation, use Spanish
-        // This is based on user feedback that Spanish files are being detected as English
-        console.log(`NOTE: Using default language es (Spanish) since detected as ${language}`);
-        language = 'es';
+        console.log(`OVERRIDE: Detected as Catalan (ca), treating as Spanish (es) for better translation`);
+      } else if (language === 'auto' || !language) {
+        // If language detection failed, keep it as auto for the translator to auto-detect
+        language = 'auto';
+        console.log(`Using auto-detection since language couldn't be determined reliably`);
       }
       
       console.log(`Final language detection: ${language}`);
       return language;
     } catch (error) {
       console.error('Error detecting language:', error);
-      return 'es'; // Default to Spanish on error - more likely for current tests
+      // No need to access error.message here since we're just returning a default value
+      return 'auto'; // Default to auto-detection on error
     }
   }
 
@@ -81,41 +113,46 @@ export class PythonService {
       }
     } catch (error) {
       console.error('Error extracting text with OCR:', error);
-      throw new Error(`OCR extraction failed: ${error}`);
+      const errorMessage = error instanceof Error 
+        ? error.message 
+        : 'Unknown error occurred';
+      throw new Error(`OCR extraction failed: ${errorMessage}`);
     }
   }
 
   /**
    * Map language codes to ones supported by Google Translator
+   * 
+   * Note: The deep_translator library expects ISO 639-1 codes directly,
+   * not the full language names as previously thought.
    */
   private mapLanguageCode(code: string): string {
-    // Language code mapping
-    const languageMapping: Record<string, string> = {
-      // ISO 639-1 language codes
-      'en': 'en',    // English
-      'es': 'es',    // Spanish
-      'fr': 'fr',    // French
-      'de': 'de',    // German
-      'it': 'it',    // Italian
-      'pt': 'pt',    // Portuguese
-      'nl': 'nl',    // Dutch
-      'ru': 'ru',    // Russian
-      'ja': 'ja',    // Japanese
-      'zh': 'zh-CN', // Chinese (simplified)
-      'ar': 'ar',    // Arabic
-      'ko': 'ko',    // Korean
-      'tr': 'tr',    // Turkish
-      'pl': 'pl',    // Polish
-      'sv': 'sv',    // Swedish
-      'hi': 'hi',    // Hindi
-      // Add more mappings as needed
+    if (!code) return 'auto';
+    
+    // Convert to lowercase for consistency
+    const lowerCode = code.toLowerCase();
+    
+    // Special cases and normalizations
+    const specialCases: Record<string, string> = {
+      'auto': 'auto',
+      'zh': 'zh-cn',
+      'zh-hans': 'zh-cn',
+      'zh-hant': 'zh-tw',
+      'iw': 'he',      // Hebrew alternate code
+      'jw': 'jv',      // Javanese
+      'nb': 'no',      // Norwegian Bokmål
+      'nn': 'no',      // Norwegian Nynorsk
+      'fil': 'tl',     // Filipino
+      'he': 'he',      // Hebrew
     };
     
-    return languageMapping[code] || code;
+    // Return special case or the original code (lowercase)
+    return specialCases[lowerCode] || lowerCode;
   }
 
   /**
    * Translates text from source language to target language with optimized chunking
+   * and multiple fallback mechanisms for reliability
    */
   async translateText(
     text: string, 
@@ -133,13 +170,13 @@ export class PythonService {
         return text;
       }
       
-      // OVERRIDE: Force source language to Spanish if auto-detected or known problematic
+      // Handle special cases but respect the detected language
       let actualSourceLang = sourceLanguage;
       
-      if (sourceLanguage === 'auto' || sourceLanguage === 'ca' || 
-          sourceLanguage === 'en') { // If it's detected as English but should be Spanish
+      // Only override Catalan to Spanish as they're very similar
+      if (sourceLanguage === 'ca') {
         actualSourceLang = 'es';
-        console.log(`OVERRIDE: Forcing source language from ${sourceLanguage} to Spanish (es)`);
+        console.log(`OVERRIDE: Changing source language from Catalan (ca) to Spanish (es) for better translation`);
       }
       
       // Clean up language codes for compatibility with Google Translator
@@ -148,51 +185,292 @@ export class PythonService {
       
       console.log(`Translating text from ${actualSourceLang} (${sourceCode}) to ${targetLanguage} (${targetCode})...`);
       
+      // Check if we have this translation in cache
+      const cacheKey = `${sourceCode}:${targetCode}:${this.hashText(text)}`;
+      if (this.translationCache.has(cacheKey)) {
+        console.log('Found translation in memory cache');
+        return this.translationCache.get(cacheKey) || text;
+      }
+      
       const inputTextPath = this.tempFileManager.createTempFile('to-translate', '.txt');
       const outputTextPath = this.tempFileManager.createTempFile('translated', '.txt');
       
-      // Write text to temporary file
-      fs.writeFileSync(inputTextPath, text);
+      // Write text to temporary file with UTF-8 encoding
+      fs.writeFileSync(inputTextPath, text, 'utf8');
       
       // Run translation using Python script with mapped language codes
       const command = `${PYTHON_PATH} "${this.pythonScriptPath}" translate "${inputTextPath}" "${outputTextPath}" "${sourceCode}" "${targetCode}"`;
       console.log(`Executing: ${command}`);
-      await execAsync(command);
       
-      if (!fs.existsSync(outputTextPath)) {
-        throw new Error('Translation failed to produce output file');
+      let translationSucceeded = false;
+      let translatedText = '';
+      
+      // First attempt with specified source language
+      try {
+        const { stdout, stderr } = await execAsync(command);
+        if (stderr) {
+          console.error('Translation stderr:', stderr);
+        }
+        if (stdout) {
+          console.log('Translation stdout:', stdout);
+        }
+        
+        if (fs.existsSync(outputTextPath)) {
+          translatedText = fs.readFileSync(outputTextPath, 'utf8');
+          
+          // Check if translation actually happened
+          translationSucceeded = translatedText !== text && translatedText.trim().length > 0;
+          
+          if (translationSucceeded) {
+            console.log('Translation successful on first attempt');
+          } else {
+            console.log('Translation output is identical to input or empty');
+          }
+        }
+      } catch (execError) {
+        console.error('Translation command failed:', execError);
+        // Continue to fallback methods
       }
       
-      const translatedText = fs.readFileSync(outputTextPath, 'utf8');
-      
-      // FALLBACK: If translation appears to have failed (text is identical to input)
-      // Try again with Spanish as the source language
-      if (translatedText === text && text.length > 30 && actualSourceLang !== 'es') {
-        console.log('WARNING: Translation output is identical to input, trying Spanish as source');
+      // If first attempt failed, try with auto-detection
+      if (!translationSucceeded) {
+        console.log('First translation attempt failed, trying with auto-detection');
         
-        // Try with Spanish as source
-        const retryCommand = `${PYTHON_PATH} "${this.pythonScriptPath}" translate "${inputTextPath}" "${outputTextPath}" "es" "${targetCode}"`;
-        console.log(`Executing retry: ${retryCommand}`);
+        const retryCommand = `${PYTHON_PATH} "${this.pythonScriptPath}" translate "${inputTextPath}" "${outputTextPath}" "auto" "${targetCode}"`;
+        console.log(`Executing retry with auto-detection: ${retryCommand}`);
         
         try {
-          await execAsync(retryCommand);
-          const retryText = fs.readFileSync(outputTextPath, 'utf8');
+          const { stdout, stderr } = await execAsync(retryCommand);
+          if (stderr) {
+            console.error('Retry translation stderr:', stderr);
+          }
+          if (stdout) {
+            console.log('Retry translation stdout:', stdout);
+          }
           
-          if (retryText !== text) {
-            console.log('Retry succeeded! Using Spanish->Target translation result');
-            return retryText;
-          } else {
-            console.log('Retry also failed, returning original result');
+          if (fs.existsSync(outputTextPath)) {
+            const retryText = fs.readFileSync(outputTextPath, 'utf8');
+            
+            if (retryText !== text && retryText.trim().length > 0) {
+              console.log('Retry with auto-detection succeeded!');
+              translatedText = retryText;
+              translationSucceeded = true;
+            } else {
+              console.log('Retry with auto-detection also failed');
+            }
           }
         } catch (retryError) {
-          console.error('Error in retry translation:', retryError);
+          console.error('Retry translation command failed:', retryError);
+          // Continue to next fallback
         }
       }
       
-      return translatedText;
+      // If both attempts failed and text is long, try splitting it into paragraphs
+      if (!translationSucceeded && text.length > 500) {
+        console.log('Both translation attempts failed, trying paragraph-by-paragraph translation');
+        
+        try {
+          // Split text into paragraphs
+          const paragraphs = text.split(/\n\s*\n/);
+          const translatedParagraphs: string[] = [];
+          
+          // Translate each paragraph separately
+          for (let i = 0; i < paragraphs.length; i++) {
+            const paragraph = paragraphs[i].trim();
+            if (!paragraph) {
+              translatedParagraphs.push('');
+              continue;
+            }
+            
+            console.log(`Translating paragraph ${i+1}/${paragraphs.length} (${paragraph.length} chars)`);
+            
+            // Write paragraph to temp file
+            fs.writeFileSync(inputTextPath, paragraph, 'utf8');
+            
+            // Try translation with auto-detection for this paragraph
+            const paraCommand = `${PYTHON_PATH} "${this.pythonScriptPath}" translate "${inputTextPath}" "${outputTextPath}" "auto" "${targetCode}"`;
+            
+            try {
+              await execAsync(paraCommand);
+              
+              if (fs.existsSync(outputTextPath)) {
+                const translatedPara = fs.readFileSync(outputTextPath, 'utf8');
+                
+                if (translatedPara && translatedPara.trim() && translatedPara !== paragraph) {
+                  translatedParagraphs.push(translatedPara);
+                } else {
+                  // If translation failed, keep original paragraph
+                  translatedParagraphs.push(paragraph);
+                }
+              } else {
+                translatedParagraphs.push(paragraph);
+              }
+            } catch (paraError) {
+              console.error(`Error translating paragraph ${i+1}:`, paraError);
+              translatedParagraphs.push(paragraph);
+            }
+          }
+          
+          // Combine translated paragraphs
+          translatedText = translatedParagraphs.join('\n\n');
+          translationSucceeded = translatedText !== text && translatedText.trim().length > 0;
+          
+          if (translationSucceeded) {
+            console.log('Paragraph-by-paragraph translation succeeded');
+          }
+        } catch (splitError) {
+          console.error('Paragraph-by-paragraph translation failed:', splitError);
+        }
+      }
+      
+      // Final result - use translated text if any method succeeded, otherwise return original
+      const finalText = translationSucceeded ? translatedText : text;
+      
+      // Cache the result
+      this.translationCache.set(cacheKey, finalText);
+      
+      return finalText;
     } catch (error) {
       console.error('Error translating text:', error);
-      throw new Error(`Translation failed: ${error}`);
+      const errorMessage = error instanceof Error 
+        ? error.message 
+        : 'Unknown error occurred';
+      
+      // Even on error, return the original text rather than throwing
+      // This ensures the user gets at least the original content
+      console.log('Returning original text due to translation error');
+      return text;
+    }
+  }
+  
+  /**
+   * Creates a hash of the text for caching purposes
+   */
+  private hashText(text: string): string {
+    return crypto.createHash('md5').update(text).digest('hex');
+  }
+
+  /**
+   * Translates a PDF file while preserving images and layout
+   */
+  async translatePdfWithImages(
+    inputPath: string, 
+    outputPath: string, 
+    sourceLanguage: string, 
+    targetLanguage: string
+  ): Promise<boolean> {
+    try {
+      console.log(`Translating PDF with image preservation from ${sourceLanguage} to ${targetLanguage}`);
+      
+      // Don't translate if languages are the same
+      if (sourceLanguage === targetLanguage) {
+        console.log('Source and target languages are the same, copying file');
+        fs.copyFileSync(inputPath, outputPath);
+        return true;
+      }
+      
+      // Clean up language codes for compatibility with Google Translator
+      const sourceCode = this.mapLanguageCode(sourceLanguage);
+      const targetCode = this.mapLanguageCode(targetLanguage);
+      
+      // Try the robust PDF translator first
+      const robustCommand = `${PYTHON_PATH} "${this.robustPdfTranslatorPath}" "${inputPath}" "${outputPath}" "${sourceCode}" "${targetCode}"`;
+      console.log(`Executing robust PDF translation: ${robustCommand}`);
+      
+      try {
+        // Set a timeout for the robust translation (3 minutes)
+        const timeoutMs = 3 * 60 * 1000;
+        const execPromise = execAsync(robustCommand);
+        
+        // Create a timeout promise
+        const timeoutPromise = new Promise<{stdout: string, stderr: string}>((_, reject) => {
+          setTimeout(() => {
+            reject(new Error('PDF translation timed out after 3 minutes'));
+          }, timeoutMs);
+        });
+        
+        // Race the execution against the timeout
+        const { stdout, stderr } = await Promise.race([execPromise, timeoutPromise]);
+        
+        if (stderr) {
+          console.error('PDF translation stderr:', stderr);
+        }
+        if (stdout) {
+          console.log('PDF translation stdout:', stdout);
+        }
+        
+        // Check if the output file was created
+        if (fs.existsSync(outputPath)) {
+          console.log('Robust PDF translation completed successfully');
+          return true;
+        } else {
+          throw new Error('Robust PDF translation failed to produce output file');
+        }
+      } catch (execError) {
+        console.error('Robust PDF translation failed:', execError);
+        
+        // Fall back to the simple PDF translator
+        console.log('Falling back to simple PDF translator...');
+        
+        const simpleCommand = `${PYTHON_PATH} "${this.simplePdfTranslatorPath}" "${inputPath}" "${outputPath}" "${sourceCode}" "${targetCode}"`;
+        console.log(`Executing simple PDF translation: ${simpleCommand}`);
+        
+        try {
+          const { stdout, stderr } = await execAsync(simpleCommand);
+          if (stderr) {
+            console.error('Simple PDF translation stderr:', stderr);
+          }
+          if (stdout) {
+            console.log('Simple PDF translation stdout:', stdout);
+          }
+          
+          // Check if the output file was created
+          if (fs.existsSync(outputPath)) {
+            console.log('Simple PDF translation completed successfully');
+            return true;
+          } else {
+            throw new Error('Simple PDF translation also failed to produce output file');
+          }
+        } catch (fallbackError) {
+          console.error('Simple PDF translation also failed:', fallbackError);
+          
+          // Last resort: try the original PDF processor
+          console.log('Trying original PDF processor as last resort...');
+          
+          const originalCommand = `${PYTHON_PATH} "${this.pythonScriptPath}" translate_pdf "${inputPath}" "${outputPath}" "${sourceCode}" "${targetCode}"`;
+          console.log(`Executing original PDF translation: ${originalCommand}`);
+          
+          try {
+            const { stdout, stderr } = await execAsync(originalCommand);
+            if (stderr) {
+              console.error('Original PDF translation stderr:', stderr);
+            }
+            if (stdout) {
+              console.log('Original PDF translation stdout:', stdout);
+            }
+            
+            // Check if the output file was created
+            if (fs.existsSync(outputPath)) {
+              console.log('Original PDF translation completed successfully');
+              return true;
+            } else {
+              throw new Error('All PDF translation methods failed to produce output file');
+            }
+          } catch (originalError) {
+            console.error('All PDF translation methods failed:', originalError);
+            const errorMessage = originalError instanceof Error 
+              ? originalError.message 
+              : 'Unknown error occurred';
+            throw new Error(`All PDF translation methods failed: ${errorMessage}`);
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Error translating PDF with images:', error);
+      const errorMessage = error instanceof Error 
+        ? error.message 
+        : 'Unknown error occurred';
+      throw new Error(`PDF translation failed: ${errorMessage}`);
     }
   }
 }

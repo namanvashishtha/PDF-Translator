@@ -99,6 +99,14 @@ ReportLab>=4.4.0           # PDF generation and manipulation
 - **Session Management**: Express-session with PostgreSQL storage
 - **Type Safety**: Drizzle ORM with Zod validation
 
+### **Python Service Integration**
+The Node.js backend communicates with Python scripts through a dedicated `PythonService` class that:
+- Manages the execution of Python scripts for various PDF operations
+- Handles language detection with specialized algorithms and fallback mechanisms
+- Performs OCR (Optical Character Recognition) for scanned documents
+- Translates text with optimized chunking and intelligent language mapping
+- Implements retry logic and fallback strategies for reliable translation
+
 ## 🚀 Quick Start
 
 ### Prerequisites

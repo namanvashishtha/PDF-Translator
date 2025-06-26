@@ -11,9 +11,13 @@ export const pdfService = {
     const formData = new FormData();
     formData.append("file", file);
     
+    console.log("Uploading PDF via service:", file.name, file.type, file.size);
+    
     const response = await fetch("/api/upload", {
       method: "POST",
       body: formData,
+      // Don't set Content-Type header when using FormData
+      // The browser will automatically set the correct multipart/form-data with boundary
     });
     
     if (!response.ok) {

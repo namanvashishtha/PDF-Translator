@@ -32,10 +32,12 @@ const upload = multer({
   // Limit to 50MB
   limits: { fileSize: 50 * 1024 * 1024 },
   fileFilter: function (req, file, cb) {
-    // Accept only PDFs
-    if (file.mimetype !== "application/pdf") {
+    // Accept PDFs with more flexible MIME type checking
+    if (!file.mimetype.includes("pdf") && file.mimetype !== "application/octet-stream") {
+      console.log("Rejected file with MIME type:", file.mimetype);
       return cb(new Error("Only PDF files are allowed"));
     }
+    console.log("Accepted file with MIME type:", file.mimetype);
     cb(null, true);
   },
 });
@@ -68,9 +70,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Upload PDF endpoint
   app.post("/api/upload", upload.single("file"), async (req, res) => {
     try {
+      console.log("Upload request received:", req.headers);
+      
       if (!req.file) {
+        console.error("No file in request");
         return res.status(400).json({ message: "No file uploaded" });
       }
+      
+      console.log("File uploaded successfully:", {
+        originalname: req.file.originalname,
+        mimetype: req.file.mimetype,
+        size: req.file.size,
+        path: req.file.path
+      });
 
       // Save document info to storage
       const document = await storage.createDocument({

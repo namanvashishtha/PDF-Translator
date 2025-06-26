@@ -35,14 +35,39 @@ export function FileUpload({
       formData.append("file", file);
       console.log("Uploading file:", file.name);
       
-      const response = await fetch("/api/upload", {
+      // Use relative URL for API endpoint
+      const uploadUrl = "/api/upload";
+      console.log("Uploading to:", uploadUrl);
+      
+      const response = await fetch(uploadUrl, {
         method: "POST",
         body: formData,
+        // Don't set Content-Type header when using FormData
+        // The browser will automatically set the correct multipart/form-data with boundary
       });
 
+      // Log the response status
+      console.log("Upload response status:", response.status);
+      
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || "Error uploading file");
+        let errorMessage = `Error uploading file (Status: ${response.status})`;
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.message || errorMessage;
+        } catch (e) {
+          console.error("Failed to parse error response:", e);
+          // Try to get text response if JSON parsing fails
+          try {
+            const textResponse = await response.text();
+            if (textResponse) {
+              errorMessage += ` - ${textResponse}`;
+            }
+          } catch (textError) {
+            console.error("Failed to get text response:", textError);
+          }
+        }
+        console.error("Upload error details:", errorMessage);
+        throw new Error(errorMessage);
       }
 
       return response.json();
@@ -75,9 +100,13 @@ export function FileUpload({
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
+      console.log("File selected:", file.name);
+      console.log("File type:", file.type);
+      console.log("File size:", file.size, "bytes");
       
       // Check if file is PDF
       if (!file.type.includes("pdf")) {
+        console.error("Invalid file type:", file.type);
         toast({
           title: "Invalid file type",
           description: "Please upload a PDF file",
@@ -88,6 +117,7 @@ export function FileUpload({
       
       // Check file size (max 50MB)
       if (file.size > 50 * 1024 * 1024) {
+        console.error("File too large:", file.size);
         toast({
           title: "File too large",
           description: "Maximum file size is 50MB",
@@ -96,7 +126,13 @@ export function FileUpload({
         return;
       }
       
+      // Call the parent component's onFileSelect function
       onFileSelect(file);
+      
+      // Log success
+      console.log("File successfully selected and validated");
+    } else {
+      console.error("No file selected");
     }
   };
 
@@ -111,8 +147,24 @@ export function FileUpload({
       // Get the selected file
       const fileInput = fileInputRef.current;
       if (fileInput && fileInput.files && fileInput.files[0]) {
+        console.log("Starting file upload for:", fileInput.files[0].name);
+        console.log("File size:", fileInput.files[0].size, "bytes");
+        console.log("File type:", fileInput.files[0].type);
+        
+        // Start the upload mutation
         uploadMutation.mutate(fileInput.files[0]);
+      } else {
+        console.error("No file selected or file input reference is null");
+        toast({
+          title: "Upload failed",
+          description: "No file selected. Please select a PDF file.",
+          variant: "destructive",
+        });
       }
+    } else if (uploadMutation.isPending) {
+      console.log("Upload already in progress");
+    } else {
+      console.log("No file selected");
     }
   };
 

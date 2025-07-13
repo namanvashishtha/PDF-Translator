@@ -1,0 +1,14 @@
+[build]
+builder = "nixpacks"
+
+[build.nixpacksConfig]
+providers = ["python", "node"]
+
+[build.nixpacksConfig.python]
+version = "3.11"
+
+[deploy]
+startCommand = "npm run dev"
+
+[env]
+PYTHON_VERSION = "3.11"

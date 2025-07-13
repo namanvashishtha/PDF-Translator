@@ -1,14 +1,10 @@
 [build]
-builder = "nixpacks"
-
-[build.nixpacksConfig]
-providers = ["python", "node"]
-
-[build.nixpacksConfig.python]
-version = "3.11"
+builder = "dockerfile"
+dockerfilePath = "Dockerfile"
 
 [deploy]
-startCommand = "npm run dev"
+startCommand = "npm run start"
 
 [env]
+NODE_ENV = "production"
 PYTHON_VERSION = "3.11"

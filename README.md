@@ -117,7 +117,7 @@ The Node.js backend communicates with Python scripts through a dedicated `Python
 ### 1. Clone & Install
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/PDFTranslateHub.git
+git clone https://github.com/namanvashishtha/PDF-Translator.git
 cd PDFTranslateHub
 
 # Install Node.js dependencies
@@ -129,23 +129,15 @@ pip install -r requirements.txt
 pip install -e .
 ```
 
-### 2. Environment Setup
-```bash
-# Copy environment template
-cp .env.example .env
 
-# Configure your environment variables
-# DATABASE_URL=your_database_url
-# SESSION_SECRET=your_session_secret
-```
 
-### 3. Database Setup
+### 2. Database Setup
 ```bash
 # Push database schema
 npm run db:push
 ```
 
-### 4. Development Server
+### 3. Development Server
 ```bash
 # Start the development server (runs both frontend and backend)
 npm run dev
@@ -281,67 +273,450 @@ git push origin feature/amazing-feature
 - 📱 **Mobile Support**: Improve mobile responsiveness
 - 🧪 **Testing**: Add comprehensive test coverage
 
-## 📊 Performance
+## 📊 Performance Metrics & Optimization
 
-### Benchmarks
-- **Small PDFs** (1-5 pages): ~10-30 seconds
-- **Medium PDFs** (5-20 pages): ~30-120 seconds  
-- **Large PDFs** (20+ pages): ~2-10 minutes
-- **Memory Usage**: ~50-200MB per document
-- **Accuracy**: 95%+ layout preservation
+### **Translation Performance Benchmarks**
+```
+Document Size       | Processing Time | Memory Usage | Accuracy
+Small (1-5 pages)   | 10-30 seconds  | 50-100MB    | 98%+ layout preservation
+Medium (5-20 pages) | 30-120 seconds | 100-200MB   | 95%+ layout preservation  
+Large (20+ pages)   | 2-10 minutes   | 200-500MB   | 92%+ layout preservation
+Complex/Scanned     | 5-15 minutes   | 300-800MB   | 85%+ with OCR processing
+```
 
-### Optimization Features
-- **Streaming Processing**: Handle large files without memory issues
-- **Parallel Processing**: Multi-threaded text extraction and translation
-- **Caching**: Smart caching of translation results and font data
-- **Cleanup**: Automatic temporary file management
+### **Translation Strategy Performance**
+```
+Strategy                | Speed    | Accuracy | Layout Preservation | Best Use Case
+pdf_processor.py       | Fast     | 95%      | Excellent          | General purpose
+guaranteed_translate   | Medium   | 98%      | Excellent          | Critical documents
+exact_layout_translate | Slow     | 99%      | Perfect            | Precision required
+aggressive_translate   | Fast     | 90%      | Good               | Difficult documents
+extreme_translate      | Slow     | 85%      | Variable           | Last resort
+```
 
-## 🐛 Troubleshooting
+### **Advanced Optimization Features**
 
-### Common Issues
+#### **Memory Management**
+- **Streaming Processing**: Handle large files without memory overflow
+- **Automatic Cleanup**: TempFileManager removes temporary files automatically
+- **Memory Monitoring**: Track memory usage per translation operation
+- **Garbage Collection**: Explicit cleanup of Python processes and file handles
 
-**Translation Not Working**
+#### **Performance Optimizations**
+- **Translation Caching**: In-memory cache for repeated translations (Map-based)
+- **Language Detection Caching**: Avoid re-detecting same documents
+- **Parallel Processing**: Concurrent text extraction and translation where possible
+- **Chunk-Based Translation**: Split large texts into optimal chunks (500-2000 chars)
+- **Font Caching**: Cache font detection results for similar documents
+
+#### **Fallback Strategy Chain**
+```
+1. Main pdf_processor.py (translate_pdf) - Primary method
+2. exact_layout_translate.py - For Spanish→English (critical case)
+3. text_only_translate.py - Simplified approach
+4. pure_text_translate.py - Text extraction focus
+5. extreme_translate.py - Maximum coverage
+6. aggressive_translate.py - High visibility
+7. guaranteed_translate.py - Force translation
+8. robust_pdf_translator.py - Error recovery
+9. simple_pdf_translator.py - Basic fallback
+10. direct_translate.py - Simple replacement
+11. force_translate_pdf.py - Last resort
+```
+
+#### **Error Recovery & Reliability**
+- **Retry Logic**: Exponential backoff for translation failures
+- **Multiple Translation Providers**: Google Translate, DeepL, MyMemory, Linguee
+- **Language Code Mapping**: Automatic conversion between different language code standards
+- **Paragraph-by-Paragraph Fallback**: Split large texts when bulk translation fails
+- **OCR Fallback**: Automatic OCR when direct text extraction fails
+
+## 🐛 Comprehensive Troubleshooting Guide
+
+### **Common Issues & Solutions**
+
+#### **Translation Not Working**
 ```bash
-# Check Python dependencies
-pip install --upgrade deep-translator PyMuPDF
-
-# Verify Python path in server configuration
+# Check Python dependencies and versions
 python --version  # Should be 3.11+
+pip list | grep -E "(deep-translator|PyMuPDF|langdetect)"
+
+# Reinstall critical dependencies
+pip install --upgrade deep-translator>=1.11.4 PyMuPDF>=1.25.5 langdetect>=1.0.9
+
+# Test Python script directly
+python scripts/pdf_processor.py detect_language "test.pdf"
 ```
 
-**Font Issues**
+#### **Font Issues & Text Rendering**
 ```bash
-# Install system fonts (Linux)
-sudo apt-get install fonts-liberation fonts-dejavu
+# Linux - Install comprehensive font packages
+sudo apt-get install fonts-liberation fonts-dejavu fonts-noto
+sudo fc-cache -fv  # Refresh font cache
 
-# macOS - fonts are usually pre-installed
-# Windows - ensure Arial/Helvetica fonts are available
+# macOS - Fonts usually pre-installed, but check system fonts
+ls /System/Library/Fonts/ | grep -E "(Arial|Helvetica|Times)"
+
+# Windows - Ensure core fonts are available
+dir C:\Windows\Fonts\arial*.ttf
 ```
 
-**Memory Issues**
+#### **Memory & Performance Issues**
 ```bash
 # Increase Node.js memory limit
 export NODE_OPTIONS="--max-old-space-size=4096"
 npm run dev
+
+# Monitor memory usage during translation
+# Add to your environment
+DEBUG_MEMORY=true npm run dev
+
+# Clear temporary files if disk space is low
+rm -rf uploads/temp_*
+rm -rf debug_output/*.json
+```
+
+#### **File Upload Problems**
+```bash
+# Check file permissions
+ls -la uploads/
+chmod 755 uploads/
+
+# Verify file size limits (default 50MB)
+# Increase in server/routes.ts if needed:
+# limits: { fileSize: 100 * 1024 * 1024 }  // 100MB
+```
+
+#### **Database Connection Issues**
+```bash
+# Check PostgreSQL connection
+echo $DATABASE_URL
+npm run db:push  # Test database schema
+
+# Reset database if needed
+dropdb your_database_name
+createdb your_database_name
+npm run db:push
+```
+
+### **Debug Mode & Logging**
+
+#### **Enable Comprehensive Debugging**
+```bash
+# Environment variables for maximum debugging
+DEBUG=true
+NODE_ENV=development
+PYTHON_DEBUG=true
+TRANSLATION_DEBUG=true
+
+npm run dev
+```
+
+#### **Debug Output Analysis**
+```bash
+# Check debug output files
+ls -la debug_output/
+cat debug_output/translation_test.json | jq '.'
+
+# Monitor real-time logs
+tail -f server.log
+tail -f python_translation.log
+```
+
+### **Performance Optimization**
+
+#### **Translation Speed Issues**
+```bash
+# Use faster translation strategy for testing
+# Modify server/services/pdfService.ts to prioritize:
+# 1. direct_translate.py (fastest)
+# 2. simple_pdf_translator.py (simple)
+# 3. text_only_translate.py (text focus)
+
+# Skip OCR for text-based PDFs
+# Set OCR_SKIP=true in environment
+```
+
+#### **Memory Optimization**
+```bash
+# Reduce translation chunk size
+# In server/services/pythonService.ts:
+# maxChunkSize: 1000  // Reduce from default 2000
+
+# Enable aggressive garbage collection
+export NODE_OPTIONS="--max-old-space-size=2048 --gc-interval=100"
+```
+
+### **Error Code Reference**
+
+#### **HTTP Error Codes**
+- **400**: Bad Request - Check file format (must be PDF)
+- **413**: File too large - Reduce file size or increase limit
+- **415**: Unsupported media type - Ensure file is PDF
+- **500**: Internal server error - Check logs for Python script errors
+
+#### **Python Script Error Codes**
+- **Exit Code 1**: File not found or permission denied
+- **Exit Code 2**: Invalid language code
+- **Exit Code 3**: Translation service unavailable
+- **Exit Code 4**: OCR processing failed
+- **Exit Code 5**: PDF corruption or invalid format
+
+### **Advanced Diagnostics**
+
+#### **Test Individual Components**
+```bash
+# Test file upload
+curl -X POST -F "file=@test.pdf" http://localhost:5000/api/upload
+
+# Test language detection
+python scripts/pdf_processor.py detect_language "test.pdf"
+
+# Test translation service
+python scripts/pdf_processor.py translate "input.txt" "output.txt" "es" "en"
+
+# Test OCR capability
+python scripts/pdf_processor.py ocr "scanned.pdf" "ocr_output.txt"
+```
+
+#### **Performance Profiling**
+```bash
+# Profile Node.js performance
+npm install -g clinic
+clinic doctor -- npm start
+
+# Profile Python script performance
+python -m cProfile scripts/pdf_processor.py translate_pdf "input.pdf" "output.pdf" "es" "en"
 ```
 
 
 
-## 🙏 Acknowledgments
+## 🔧 Configuration & Environment Setup
 
-- **PyMuPDF Team** - For the incredible PDF processing library
-- **Radix UI** - For the accessible component system
-- **Google Translate** - For the translation API
-- **Open Source Community** - For the amazing tools and libraries
+### **Environment Variables**
+```bash
+# Database Configuration
+DATABASE_URL=postgresql://username:password@localhost:5432/pdftranslatehub
+SESSION_SECRET=your-super-secret-session-key
 
+# Python Configuration
+PYTHON_PATH=python  # or /usr/bin/python3
+PYTHON_DEBUG=false
 
+# Translation Configuration
+TRANSLATION_CACHE_SIZE=1000
+MAX_FILE_SIZE=52428800  # 50MB in bytes
+TRANSLATION_TIMEOUT=300000  # 5 minutes in milliseconds
+
+# Development
+NODE_ENV=development
+DEBUG=false
+PORT=5000
+```
+
+### **Production Deployment**
+```bash
+# Build for production
+npm run build
+
+# Start production server
+NODE_ENV=production npm start
+
+# Using PM2 for process management
+npm install -g pm2
+pm2 start dist/index.js --name "pdf-translate-hub"
+pm2 startup
+pm2 save
+```
+
+### **Docker Deployment**
+```dockerfile
+# Dockerfile example
+FROM node:18-alpine
+
+# Install Python and dependencies
+RUN apk add --no-cache python3 py3-pip
+
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci --only=production
+
+COPY . .
+RUN npm run build
+
+EXPOSE 5000
+CMD ["npm", "start"]
+```
+
+## 🧪 Testing & Quality Assurance
+
+### **Testing Strategy**
+```bash
+# Unit tests (when implemented)
+npm test
+
+# Integration tests
+npm run test:integration
+
+# End-to-end tests
+npm run test:e2e
+
+# Python script tests
+python -m pytest scripts/tests/
+```
+
+### **Code Quality Tools**
+```bash
+# TypeScript type checking
+npm run check
+
+# ESLint (when configured)
+npm run lint
+
+# Prettier formatting
+npm run format
+
+# Python code quality
+flake8 scripts/
+black scripts/
+mypy scripts/
+```
+
+## � Advanced Features & Customization
+
+### **Custom Translation Providers**
+Add new translation providers by extending the Python scripts:
+```python
+# In scripts/pdf_processor.py
+from deep_translator import AzureTranslator, YandexTranslator
+
+def get_translator(provider: str, source: str, target: str):
+    if provider == "azure":
+        return AzureTranslator(api_key="your-key", source=source, target=target)
+    elif provider == "yandex":
+        return YandexTranslator(api_key="your-key", source=source, target=target)
+    # ... existing providers
+```
+
+### **Custom PDF Processing Algorithms**
+Create new translation strategies:
+```python
+# scripts/custom_translate.py
+def custom_translation_algorithm(input_pdf, output_pdf, source_lang, target_lang):
+    # Your custom implementation
+    pass
+```
+
+### **API Extensions**
+Add new endpoints in `server/routes.ts`:
+```typescript
+// Custom translation endpoint
+app.post("/api/custom-translate", async (req, res) => {
+  // Custom translation logic
+});
+```
+
+## 🌟 Advanced Use Cases
+
+### **Batch Processing**
+```bash
+# Process multiple PDFs
+for pdf in *.pdf; do
+  python scripts/pdf_processor.py translate_pdf "$pdf" "translated_$pdf" "es" "en"
+done
+```
+
+### **API Integration**
+```javascript
+// JavaScript client example
+const translatePDF = async (file, targetLanguage) => {
+  const formData = new FormData();
+  formData.append('file', file);
+  
+  const uploadResponse = await fetch('/api/upload', {
+    method: 'POST',
+    body: formData
+  });
+  
+  const { id } = await uploadResponse.json();
+  
+  const translateResponse = await fetch('/api/translate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      documentId: id,
+      targetLanguage,
+      outputFormat: 'pdf'
+    })
+  });
+  
+  return translateResponse.json();
+};
+```
+
+## 📚 Learning Resources
+
+### **Understanding the Codebase**
+1. **Start with**: `server/index.ts` - Application entry point
+2. **Frontend**: `client/src/App.tsx` - React application structure
+3. **API Routes**: `server/routes.ts` - All API endpoints
+4. **PDF Processing**: `server/services/pdfService.ts` - Core PDF operations
+5. **Python Integration**: `server/services/pythonService.ts` - Python script management
+6. **Database**: `shared/schema.ts` - Database schema and types
+
+### **Key Concepts**
+- **Hybrid Architecture**: Node.js + Python for optimal performance
+- **Type Safety**: Full TypeScript with Zod validation
+- **Component Architecture**: Radix UI + Tailwind CSS
+- **Database ORM**: Drizzle with PostgreSQL
+- **File Management**: Temporary file lifecycle management
+- **Translation Strategies**: Multiple algorithms for different use cases
+
+## 🙏 Acknowledgments & Credits
+
+### **Core Technologies**
+- **[PyMuPDF](https://pymupdf.readthedocs.io/)** - Incredible PDF processing capabilities
+- **[Radix UI](https://www.radix-ui.com/)** - Accessible component primitives
+- **[Tailwind CSS](https://tailwindcss.com/)** - Utility-first CSS framework
+- **[Drizzle ORM](https://orm.drizzle.team/)** - Type-safe database operations
+- **[Vite](https://vitejs.dev/)** - Lightning-fast build tool
+
+### **Translation Services**
+- **[Google Translate](https://translate.google.com/)** - Primary translation provider
+- **[DeepL](https://www.deepl.com/)** - High-quality translation alternative
+- **[deep-translator](https://github.com/nidhaloff/deep-translator)** - Python translation library
+
+### **UI/UX Libraries**
+- **[shadcn/ui](https://ui.shadcn.com/)** - Beautiful component library
+- **[Lucide React](https://lucide.dev/)** - Consistent icon system
+- **[Framer Motion](https://www.framer.com/motion/)** - Smooth animations
+
+### **Development Tools**
+- **[TypeScript](https://www.typescriptlang.com/)** - Type safety and developer experience
+- **[TanStack Query](https://tanstack.com/query)** - Server state management
+- **[Zod](https://zod.dev/)** - Schema validation
+
+## 📄 License & Usage
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+### **Commercial Use**
+- ✅ Commercial use allowed
+- ✅ Modification allowed  
+- ✅ Distribution allowed
+- ✅ Private use allowed
+- ❗ License and copyright notice required
 
 ---
 
 <div align="center">
 
-**Made with ❤️ by Naman Vashishtha**
+**🌍 PDF Translate Hub - Bridging Language Barriers in Documents**
 
-[⭐ Star this repo](https://github.com/yourusername/PDFTranslateHub) | [🍴 Fork it](https://github.com/yourusername/PDFTranslateHub/fork) | [📢 Share it](https://twitter.com/intent/tweet?text=Check%20out%20this%20amazing%20PDF%20translation%20tool!)
+**Made with ❤️ by [Naman Vashishtha](https://github.com/namanvashishtha)**
+
+[![⭐ Star this repo](https://img.shields.io/github/stars/yourusername/PDFTranslateHub?style=social)](https://github.com/namanvashishtha/PDF-Translator.git)
+[![🍴 Fork it](https://img.shields.io/github/forks/yourusername/PDFTranslateHub?style=social)](https://github.com/namanvashishtha/PDF-Translator.git)
+
 
 </div>

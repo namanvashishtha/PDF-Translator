@@ -73,9 +73,9 @@ PDFTranslateHub/
 PyMuPDF (fitz)>=1.25.5     # Industry-leading PDF manipulation
 deep-translator>=1.11.4     # Multi-provider translation API
 langdetect>=1.0.9          # Automatic language detection
-easyocr>=1.11.2            # OCR for scanned documents
 Wand>=0.6.13               # ImageMagick binding for image processing
 ReportLab>=4.4.0           # PDF generation and manipulation
+PyPDF2>=3.0.1              # Additional PDF processing capabilities
 ```
 
 ### **Modern Frontend Stack**
@@ -115,6 +115,8 @@ The Node.js backend communicates with Python scripts through a dedicated `Python
 - **Git**
 
 ### 1. Clone & Install
+
+#### Quick Deployment (Recommended)
 ```bash
 # Clone the repository
 git clone https://github.com/namanvashishtha/PDF-Translator.git
@@ -123,10 +125,37 @@ cd PDFTranslateHub
 # Install Node.js dependencies
 npm install
 
+# Deploy Python environment (Windows)
+deploy.bat
+
+# Deploy Python environment (Linux/Mac)
+chmod +x deploy.sh
+./deploy.sh
+
+# OR use Python deployment script
+python deploy.py
+```
+
+#### Manual Installation
+```bash
+# Clone the repository
+git clone https://github.com/namanvashishtha/PDF-Translator.git
+cd PDFTranslateHub
+
+# Install Node.js dependencies
+npm install
+
+# Create Python virtual environment
+python -m venv venv
+
+# Activate virtual environment
+# Windows:
+venv\Scripts\activate
+# Linux/Mac:
+source venv/bin/activate
+
 # Install Python dependencies
 pip install -r requirements.txt
-# OR using the project file
-pip install -e .
 ```
 
 
